@@ -6,39 +6,50 @@ import {
   computeVibiness,
   FUNCTION_WORDS
 } from './scoring.ts';
+import { NUM_FEATURES } from './weights_loader.ts';
 
-// Preserves atomic section codes (109A, 14A.35, 8.08) and parentheticals ((1), (a))
-const STATUTORY_SPLIT_REGEX = /(\([a-zA-Z0-9]+\)|[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?|[\p{L}\p{M}]+|[.!?\n]+|[\p{P}\p{S}])/gu;
 const LLAMA_SERVER_URL = 'http://127.0.0.1:9000/v1/embeddings';
 
-function extractQuerySymbolShingles(queryText: string): string[] {
-  const rawSymbols = queryText.match(/\([a-zA-Z0-9]+\)|[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?/gu) || [];
-  if (rawSymbols.length === 0) return [];
-
-  const cleanSymbols = rawSymbols.map((s) => s.toLowerCase());
-  const shingles = new Set<string>();
-
-  for (let sIdx = 0; sIdx < cleanSymbols.length; sIdx++) {
-    let compound = '';
-    for (let k = 0; k < 3 && (sIdx + k) < cleanSymbols.length; k++) {
-      compound += cleanSymbols[sIdx + k]!;
-      shingles.add(compound);
-    }
-  }
-
-  return Array.from(shingles);
+/**
+ * Preprocessing rule:
+ * 1. 3 or more spaces become 2 spaces.
+ * 2. 3 or more newlines become 2 newlines.
+ */
+export function preprocessText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[^\S\r\n]{3,}/g, '  ')
+    .replace(/(?:\r?\n){3,}/g, '\n\n');
 }
+
+// Splits tokens preserving atomic statutory symbols & parentheticals
+const BASE_TOKEN_REGEX = /(\([a-zA-Z0-9]+\)|[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?|[\p{L}\p{M}\p{N}]+|[.!?\n]+|[^\s\p{L}\p{M}\p{N}])/gu;
+const PURE_LANGUAGE_REGEX = /^[\p{L}\p{M}]+$/u;
+const STATUTORY_SYMBOL_REGEX = /\([a-zA-Z0-9]+\)|[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?/gu;
 
 export interface IndexedDocument {
   id: string;
-  text: string;
+  rawText: string;
   cleanText: string;
-  words: string[];
-  bpeTokenMap: Map<string, number[]>;
-  bpeTfMap: Map<string, number>;
-  docBpeSet: Set<string>;
-  docSymbolSet: Set<string>;
-  docNgramSet: Set<string>;
+  wordsT1: string[];
+  docLengthT1: number;
+  docLengthT2: number;
+  docLengthT3: number;
+
+  // Tokenizer 1 (Universal BPE)
+  bpeTfMap1: Map<string, number>;
+  bpePosMap1: Map<string, number[]>;
+  docBpeSet1: Set<string>;
+
+  // Tokenizer 2 (Symbol & Alphanumerics BPE)
+  bpeTfMap2: Map<string, number>;
+  docBpeSet2: Set<string>;
+  docSymbolShingles2: Set<string>;
+
+  // Tokenizer 3 (Language Multilingual N-Gram)
+  ngramTfMap3: Map<string, number>;
+  docNgramSet3: Set<string>;
+
   punctuationIndices: Set<number>;
   docProseQuality: number;
 }
@@ -53,24 +64,32 @@ export interface SearchResult {
 }
 
 interface PreparedQuery {
-  queryClean: string;
+  rawQuery: string;
+  cleanQuery: string;
   queryWords: string[];
   querySymbols: string[];
-  uniqueBpeTokens: string[];
-  tokenToUniqueId: Map<string, number>;
-  uniqueBpeCount: number;
-  queryNgrams: string[];
-  querySymbolShingles: string[];
+
+  // Tokenizer 1
+  uniqueBpe1: string[];
+  tokenToId1: Map<string, number>;
+  maxIdfToken1: string;
+  medianIdf1: number;
+  maxQueryBm25_1: number;
+
+  // Tokenizer 2
+  uniqueBpe2: string[];
+  maxIdfToken2: string;
+  maxQueryBm25_2: number;
+  fullCitationQuery2: string;
+  hasFullCitation2: boolean;
+
+  // Tokenizer 3
+  uniqueNgrams3: string[];
+  maxQueryBm25_3: number;
+
   salientPhrases: string[];
-  bpeQueryIdfSum: number;
-  ngramQueryIdfSum: number;
-  maxIdfToken: string;
-  medianIdf: number;
-  maxQueryBm25: number;
   queryVibiness: number;
   queryNumericRatio: number;
-  fullCitationQuery: string;
-  hasFullCitation: boolean;
 }
 
 interface ScoredCandidate {
@@ -88,27 +107,33 @@ export interface SearchScratchpad {
   featureBuffer: Float32Array;
   windowHits: WindowHit[];
   termCounts: Int32Array;
-  matchedBpeTokens: Set<string>;
+  matchedTokens1: Set<string>;
 }
 
 export function createSearchScratchpad(maxTerms: number = 64): SearchScratchpad {
   return {
-    featureBuffer: new Float32Array(18),
+    featureBuffer: new Float32Array(NUM_FEATURES),
     windowHits: [],
     termCounts: new Int32Array(Math.max(64, maxTerms)),
-    matchedBpeTokens: new Set<string>()
+    matchedTokens1: new Set<string>()
   };
 }
 
 export class SearchEngine {
   documents: IndexedDocument[] = [];
   docCount: number = 0;
-  totalCorpusWords: number = 0;
-  avgdl: number = 0.0;
 
-  bpeInvertedIndex: Map<string, Set<number>> = new Map();
-  bpeDocFreq: Map<string, number> = new Map();
-  ngramDocFreq: Map<string, number> = new Map();
+  totalWordsT1: number = 0;
+  totalWordsT2: number = 0;
+  totalWordsT3: number = 0;
+
+  avgdlT1: number = 0.0;
+  avgdlT2: number = 0.0;
+  avgdlT3: number = 0.0;
+
+  docFreq1: Map<string, number> = new Map();
+  docFreq2: Map<string, number> = new Map();
+  docFreq3: Map<string, number> = new Map();
 
   denseEmbeddings: Float32Array | null = null;
   denseDim: number = 0;
@@ -128,68 +153,106 @@ export class SearchEngine {
   }
 
   addDocument(id: string, text: string): void {
+    const preprocessed = preprocessText(text);
     const docIdx = this.documents.length;
 
+    // Prose quality computation
     let punctCount = 0;
     let letterCount = 0;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i]!;
+    for (let i = 0; i < preprocessed.length; i++) {
+      const ch = preprocessed[i]!;
       if (/[\p{P}\p{S}]/u.test(ch)) punctCount++;
       else if (/[\p{L}\p{N}]/u.test(ch)) letterCount++;
     }
     const punctRatio = punctCount / Math.max(1, letterCount);
     const docProseQuality = 1.0 / (1.0 + 6.0 * punctRatio);
 
-    const words: string[] = [];
-    const rawSymbols: { token: string; pos: number }[] = [];
+    const wordsT1: string[] = [];
     const punctuationIndices = new Set<number>();
-    let wordCounter = 0;
+    const rawSymbolTokens: { token: string; pos: number }[] = [];
+
+    // Storage for Tokenizer 2 (mixed alphanumerics, symbols, codes)
+    const tokensT2: string[] = [];
+    // Storage for Tokenizer 3 (pure language words across all scripts)
+    const tokensT3: string[] = [];
 
     let match: RegExpExecArray | null;
-    STATUTORY_SPLIT_REGEX.lastIndex = 0;
-    while ((match = STATUTORY_SPLIT_REGEX.exec(text)) !== null) {
+    BASE_TOKEN_REGEX.lastIndex = 0;
+    let wordCounter = 0;
+
+    while ((match = BASE_TOKEN_REGEX.exec(preprocessed)) !== null) {
       const token = match[0]!;
 
       if (/[.!?\n]/.test(token)) {
         if (wordCounter > 0) punctuationIndices.add(wordCounter - 1);
-      } else if (token.startsWith('(') && token.endsWith(')')) {
-        rawSymbols.push({ token, pos: wordCounter });
-      } else if (/^[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?$/.test(token)) {
-        rawSymbols.push({ token, pos: wordCounter });
-        words.push(token);
-        wordCounter++;
-      } else if (/^[\p{L}\p{M}]+$/u.test(token)) {
-        words.push(token);
-        wordCounter++;
+        continue;
       }
+
+      const isPureLang = PURE_LANGUAGE_REGEX.test(token);
+
+      // Tokenizer 1 accepts all word tokens
+      wordsT1.push(token);
+
+      // Tokenizer 2: ONLY remove if token is pure language. Keep if it has numbers/symbols/mixed alphanumerics
+      if (!isPureLang) {
+        tokensT2.push(token);
+      }
+
+      // Tokenizer 3: Language only (includes non-English alphabets/scripts)
+      if (/[\p{L}\p{M}]/u.test(token) && !/^[0-9]+$/.test(token)) {
+        tokensT3.push(token);
+      }
+
+      if (token.startsWith('(') && token.endsWith(')')) {
+        rawSymbolTokens.push({ token, pos: wordCounter });
+      } else if (/^[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?$/.test(token)) {
+        rawSymbolTokens.push({ token, pos: wordCounter });
+      }
+
+      wordCounter++;
     }
 
-    const bpeTokenMap = new Map<string, number[]>();
-    const bpeTfMap = new Map<string, number>();
-    const docBpeSet = new Set<string>();
+    // 1. TOKENIZER 1: Full Universal BPE
+    const bpeTfMap1 = new Map<string, number>();
+    const bpePosMap1 = new Map<string, number[]>();
+    const docBpeSet1 = new Set<string>();
 
-    for (let pos = 0; pos < words.length; pos++) {
-      const subwords = tokenizeWordBPE(words[pos]!);
+    for (let pos = 0; pos < wordsT1.length; pos++) {
+      const subwords = tokenizeWordBPE(wordsT1[pos]!);
       for (let s = 0; s < subwords.length; s++) {
         const sub = subwords[s]!;
-        docBpeSet.add(sub);
-        bpeTfMap.set(sub, (bpeTfMap.get(sub) || 0) + 1);
-        let list = bpeTokenMap.get(sub);
+        docBpeSet1.add(sub);
+        bpeTfMap1.set(sub, (bpeTfMap1.get(sub) || 0) + 1);
+        let list = bpePosMap1.get(sub);
         if (!list) {
           list = [];
-          bpeTokenMap.set(sub, list);
+          bpePosMap1.set(sub, list);
         }
         list.push(pos);
       }
     }
 
-    const docSymbolSet = new Set<string>();
-    for (let sIdx = 0; sIdx < rawSymbols.length; sIdx++) {
-      const basePos = rawSymbols[sIdx]!.pos;
+    // 2. TOKENIZER 2: Symbol & Alphanumeric BPE
+    const bpeTfMap2 = new Map<string, number>();
+    const docBpeSet2 = new Set<string>();
+    const docSymbolShingles2 = new Set<string>();
+
+    for (let i = 0; i < tokensT2.length; i++) {
+      const subwords = tokenizeWordBPE(tokensT2[i]!);
+      for (let s = 0; s < subwords.length; s++) {
+        const sub = subwords[s]!;
+        docBpeSet2.add(sub);
+        bpeTfMap2.set(sub, (bpeTfMap2.get(sub) || 0) + 1);
+      }
+    }
+
+    // Build contiguous statutory shingles (e.g. 109a(1)(a))
+    for (let sIdx = 0; sIdx < rawSymbolTokens.length; sIdx++) {
+      const basePos = rawSymbolTokens[sIdx]!.pos;
       const windowTokens: string[] = [];
 
-      for (let k = 0; k < 3 && (sIdx + k) < rawSymbols.length; k++) {
-        const item = rawSymbols[sIdx + k]!;
+      for (let k = 0; k < 3 && (sIdx + k) < rawSymbolTokens.length; k++) {
+        const item = rawSymbolTokens[sIdx + k]!;
         if (Math.abs(item.pos - basePos) <= 1) {
           windowTokens.push(item.token.toLowerCase());
         } else {
@@ -200,82 +263,178 @@ export class SearchEngine {
       let compound = '';
       for (let w = 0; w < windowTokens.length; w++) {
         compound += windowTokens[w]!;
-        docSymbolSet.add(compound);
-        docBpeSet.add(compound);
-        bpeTfMap.set(compound, (bpeTfMap.get(compound) || 0) + 1);
-
-        let list = bpeTokenMap.get(compound);
-        if (!list) {
-          list = [];
-          bpeTokenMap.set(compound, list);
-        }
-        list.push(basePos);
+        docSymbolShingles2.add(compound);
+        docBpeSet2.add(compound);
+        bpeTfMap2.set(compound, (bpeTfMap2.get(compound) || 0) + 1);
       }
     }
 
-    const docNgramSet = new Set<string>(tokenizeNGram(text));
+    // 3. TOKENIZER 3: Language Multilingual N-Gram
+    const ngramTfMap3 = new Map<string, number>();
+    const docNgramSet3 = new Set<string>();
 
-    for (const token of docBpeSet) {
-      this.bpeDocFreq.set(token, (this.bpeDocFreq.get(token) || 0) + 1);
-      let posting = this.bpeInvertedIndex.get(token);
-      if (!posting) {
-        posting = new Set();
-        this.bpeInvertedIndex.set(token, posting);
+    for (let i = 0; i < tokensT3.length; i++) {
+      const ngrams = tokenizeNGram(tokensT3[i]!);
+      for (let g = 0; g < ngrams.length; g++) {
+        const gram = ngrams[g]!;
+        docNgramSet3.add(gram);
+        ngramTfMap3.set(gram, (ngramTfMap3.get(gram) || 0) + 1);
       }
-      posting.add(docIdx);
     }
 
-    for (const gram of docNgramSet) {
-      this.ngramDocFreq.set(gram, (this.ngramDocFreq.get(gram) || 0) + 1);
+    // Update global document frequencies
+    for (const token of docBpeSet1) {
+      this.docFreq1.set(token, (this.docFreq1.get(token) || 0) + 1);
+    }
+    for (const token of docBpeSet2) {
+      this.docFreq2.set(token, (this.docFreq2.get(token) || 0) + 1);
+    }
+    for (const gram of docNgramSet3) {
+      this.docFreq3.set(gram, (this.docFreq3.get(gram) || 0) + 1);
     }
 
-    this.totalCorpusWords += words.length;
+    const docLengthT1 = Math.max(1, wordsT1.length);
+    const docLengthT2 = Math.max(1, tokensT2.length);
+    const docLengthT3 = Math.max(1, docNgramSet3.size);
+
+    this.totalWordsT1 += docLengthT1;
+    this.totalWordsT2 += docLengthT2;
+    this.totalWordsT3 += docLengthT3;
+
     this.documents.push({
       id,
-      text,
-      cleanText: text.toLowerCase(),
-      words,
-      bpeTokenMap,
-      bpeTfMap,
-      docBpeSet,
-      docSymbolSet,
-      docNgramSet,
+      rawText: text,
+      cleanText: preprocessed.toLowerCase(),
+      wordsT1,
+      docLengthT1,
+      docLengthT2,
+      docLengthT3,
+      bpeTfMap1,
+      bpePosMap1,
+      docBpeSet1,
+      bpeTfMap2,
+      docBpeSet2,
+      docSymbolShingles2,
+      ngramTfMap3,
+      docNgramSet3,
       punctuationIndices,
       docProseQuality
     });
 
     this.docCount = this.documents.length;
-    this.avgdl = this.totalCorpusWords / this.docCount;
+    this.avgdlT1 = this.totalWordsT1 / this.docCount;
+    this.avgdlT2 = this.totalWordsT2 / this.docCount;
+    this.avgdlT3 = this.totalWordsT3 / this.docCount;
   }
 
-  getIdf(token: string, isNgram: boolean = false): number {
-    const freqTable = isNgram ? this.ngramDocFreq : this.bpeDocFreq;
-    const df = freqTable.get(token) || 0;
+  getIdf(token: string, tokenizerType: 1 | 2 | 3): number {
+    const table =
+      tokenizerType === 1 ? this.docFreq1 :
+      tokenizerType === 2 ? this.docFreq2 : this.docFreq3;
+
+    const df = table.get(token) || 0;
     return Math.log(1.0 + (this.docCount - df + 0.5) / (df + 0.5));
   }
 
   prepareQuery(queryText: string): PreparedQuery {
-    const queryClean = queryText.toLowerCase().trim();
+    const preprocessed = preprocessText(queryText);
+    const cleanQuery = preprocessed.toLowerCase().trim();
 
-    const rawSymbols = queryClean.match(/\([a-zA-Z0-9]+\)|[0-9]+[a-zA-Z]*(?:\.[0-9]+[a-zA-Z]*)?/gu) || [];
+    const rawSymbols = cleanQuery.match(STATUTORY_SYMBOL_REGEX) || [];
     const querySymbols = rawSymbols.map((s) => s.toLowerCase());
-    const queryWords = queryClean.match(/[\p{L}\p{M}]+/gu) || [];
+    const queryWords = cleanQuery.match(/[\p{L}\p{M}]+/gu) || [];
 
-    const rawBpeTokens = tokenizeBPE(queryText);
-    const tokenToUniqueId = new Map<string, number>();
-    const uniqueBpeTokens: string[] = [];
+    // Split base tokens for query
+    const baseTokens: string[] = [];
+    let match: RegExpExecArray | null;
+    BASE_TOKEN_REGEX.lastIndex = 0;
+    while ((match = BASE_TOKEN_REGEX.exec(cleanQuery)) !== null) {
+      const tok = match[0]!;
+      if (!/[.!?\n]/.test(tok)) baseTokens.push(tok);
+    }
 
-    for (let i = 0; i < rawBpeTokens.length; i++) {
-      const t = rawBpeTokens[i]!;
-      if (!tokenToUniqueId.has(t)) {
-        tokenToUniqueId.set(t, uniqueBpeTokens.length);
-        uniqueBpeTokens.push(t);
+    // 1. Query Tokenizer 1 (Universal BPE)
+    const rawBpe1 = tokenizeBPE(cleanQuery);
+    const uniqueBpe1: string[] = [];
+    const tokenToId1 = new Map<string, number>();
+
+    for (let i = 0; i < rawBpe1.length; i++) {
+      const t = rawBpe1[i]!;
+      if (!tokenToId1.has(t)) {
+        tokenToId1.set(t, uniqueBpe1.length);
+        uniqueBpe1.push(t);
       }
     }
 
-    const queryNgrams = tokenizeNGram(queryText);
+    let maxIdfToken1 = uniqueBpe1[0] || '';
+    let maxIdfVal1 = -1;
+    let bpeQueryIdfSum1 = 0;
+    const idfList1: number[] = [];
 
-    // Feature #11: Require at least one content word in salient n-gram phrases
+    for (let i = 0; i < uniqueBpe1.length; i++) {
+      const t = uniqueBpe1[i]!;
+      const idf = this.getIdf(t, 1);
+      bpeQueryIdfSum1 += idf;
+      idfList1.push(idf);
+      if (idf > maxIdfVal1) {
+        maxIdfVal1 = idf;
+        maxIdfToken1 = t;
+      }
+    }
+
+    idfList1.sort((a, b) => a - b);
+    const medianIdf1 = idfList1.length > 0 ? idfList1[Math.floor(idfList1.length / 2)]! : 0.0;
+    const k1 = 1.2;
+    const maxQueryBm25_1 = bpeQueryIdfSum1 * (k1 + 1);
+
+    // 2. Query Tokenizer 2 (Symbol & Alphanumerics BPE)
+    const queryTokensT2 = baseTokens.filter((t) => !PURE_LANGUAGE_REGEX.test(t));
+    const uniqueBpe2Set = new Set<string>();
+
+    for (let i = 0; i < queryTokensT2.length; i++) {
+      const subwords = tokenizeWordBPE(queryTokensT2[i]!);
+      for (let s = 0; s < subwords.length; s++) {
+        uniqueBpe2Set.add(subwords[s]!);
+      }
+    }
+
+    const uniqueBpe2 = Array.from(uniqueBpe2Set);
+    let maxIdfToken2 = uniqueBpe2[0] || '';
+    let maxIdfVal2 = -1;
+    let bpeQueryIdfSum2 = 0;
+
+    for (let i = 0; i < uniqueBpe2.length; i++) {
+      const t = uniqueBpe2[i]!;
+      const idf = this.getIdf(t, 2);
+      bpeQueryIdfSum2 += idf;
+      if (idf > maxIdfVal2) {
+        maxIdfVal2 = idf;
+        maxIdfToken2 = t;
+      }
+    }
+    const maxQueryBm25_2 = bpeQueryIdfSum2 * (k1 + 1);
+    const fullCitationQuery2 = querySymbols.join('');
+    const hasFullCitation2 = fullCitationQuery2.length >= 2;
+
+    // 3. Query Tokenizer 3 (Language Multilingual N-Gram)
+    const queryTokensT3 = baseTokens.filter((t) => /[\p{L}\p{M}]/u.test(t) && !/^[0-9]+$/.test(t));
+    const uniqueNgrams3Set = new Set<string>();
+
+    for (let i = 0; i < queryTokensT3.length; i++) {
+      const ngrams = tokenizeNGram(queryTokensT3[i]!);
+      for (let g = 0; g < ngrams.length; g++) {
+        uniqueNgrams3Set.add(ngrams[g]!);
+      }
+    }
+
+    const uniqueNgrams3 = Array.from(uniqueNgrams3Set);
+    let ngramQueryIdfSum3 = 0;
+    for (let i = 0; i < uniqueNgrams3.length; i++) {
+      ngramQueryIdfSum3 += this.getIdf(uniqueNgrams3[i]!, 3);
+    }
+    const maxQueryBm25_3 = ngramQueryIdfSum3 * (k1 + 1);
+
+    // Salient collocations (Tokenizer 1 exact match)
     const salientPhrases: string[] = [];
     for (let i = 0; i < queryWords.length - 1; i++) {
       const w1 = queryWords[i]!;
@@ -288,63 +447,33 @@ export class SearchEngine {
       }
     }
 
-    let maxIdfToken = uniqueBpeTokens[0] || '';
-    let maxIdfVal = -1;
-    let bpeQueryIdfSum = 0;
-    const idfList: number[] = [];
-
-    for (let i = 0; i < uniqueBpeTokens.length; i++) {
-      const t = uniqueBpeTokens[i]!;
-      const idf = this.getIdf(t, false);
-      bpeQueryIdfSum += idf;
-      idfList.push(idf);
-      if (idf > maxIdfVal) {
-        maxIdfVal = idf;
-        maxIdfToken = t;
-      }
-    }
-
-    idfList.sort((a, b) => a - b);
-    const medianIdf = idfList.length > 0 ? idfList[Math.floor(idfList.length / 2)]! : 0.0;
-
-    let ngramQueryIdfSum = 0;
-    for (let i = 0; i < queryNgrams.length; i++) {
-      ngramQueryIdfSum += this.getIdf(queryNgrams[i]!, true);
-    }
-
-    const k1 = 1.2;
-    const maxQueryBm25 = bpeQueryIdfSum * (k1 + 1);
     const queryVibiness = computeVibiness(queryWords);
     const totalTokens = queryWords.length + querySymbols.length;
     const queryNumericRatio = totalTokens > 0 ? querySymbols.length / totalTokens : 0.0;
 
-    const fullCitationQuery = querySymbols.join('');
-    const hasFullCitation = fullCitationQuery.length >= 2;
-    const querySymbolShingles = extractQuerySymbolShingles(queryText);
-
     return {
-      queryClean,
+      rawQuery: queryText,
+      cleanQuery,
       queryWords,
       querySymbols,
-      uniqueBpeTokens,
-      tokenToUniqueId,
-      uniqueBpeCount: uniqueBpeTokens.length,
-      queryNgrams,
-      querySymbolShingles,
+      uniqueBpe1,
+      tokenToId1,
+      maxIdfToken1,
+      medianIdf1,
+      maxQueryBm25_1,
+      uniqueBpe2,
+      maxIdfToken2,
+      maxQueryBm25_2,
+      fullCitationQuery2,
+      hasFullCitation2,
+      uniqueNgrams3,
+      maxQueryBm25_3,
       salientPhrases,
-      bpeQueryIdfSum,
-      ngramQueryIdfSum,
-      maxIdfToken,
-      medianIdf,
-      maxQueryBm25,
       queryVibiness,
-      queryNumericRatio,
-      fullCitationQuery,
-      hasFullCitation
+      queryNumericRatio
     };
   }
 
-  // Pure in-place calculation: 0 heap allocations
   computeFeaturesInto(
     prep: PreparedQuery,
     doc: IndexedDocument,
@@ -353,68 +482,108 @@ export class SearchEngine {
     precomputedDenseSim: number | null,
     scratch: SearchScratchpad
   ): void {
-    const { featureBuffer, windowHits, termCounts, matchedBpeTokens } = scratch;
-
+    const { featureBuffer, windowHits, termCounts, matchedTokens1 } = scratch;
     windowHits.length = 0;
-    matchedBpeTokens.clear();
-
-    const {
-      queryClean, querySymbols, uniqueBpeTokens, uniqueBpeCount,
-      queryNgrams, salientPhrases, bpeQueryIdfSum, ngramQueryIdfSum,
-      maxIdfToken, medianIdf, maxQueryBm25, queryVibiness,
-      queryNumericRatio, fullCitationQuery, hasFullCitation
-    } = prep;
+    matchedTokens1.clear();
 
     const k1 = 1.2;
     const b = 0.75;
-    const docLenNorm = 1.0 - b + b * (doc.words.length / (this.avgdl || 1.0));
 
-    let bpeHitIdfSum = 0.0;
-    let rawBm25Score = 0.0;
-    let totalHitCount = 0;
-    let firstSalientPos = -1;
+    // =========================================================================
+    // 1. TOKENIZER 1: BM25, Coverage, Positional hits, Salience
+    // =========================================================================
+    const lenNorm1 = 1.0 - b + b * (doc.docLengthT1 / (this.avgdlT1 || 1.0));
+    let rawBm25_1 = 0.0;
+    let totalHitCount1 = 0;
+    let firstSalientPos1 = -1;
 
-    for (let termId = 0; termId < uniqueBpeTokens.length; termId++) {
-      const t = uniqueBpeTokens[termId]!;
-      if (doc.docBpeSet.has(t)) {
-        const idf = this.getIdf(t, false);
-        bpeHitIdfSum += idf;
-        matchedBpeTokens.add(t);
+    for (let i = 0; i < prep.uniqueBpe1.length; i++) {
+      const t = prep.uniqueBpe1[i]!;
+      if (doc.docBpeSet1.has(t)) {
+        matchedTokens1.add(t);
+        const idf = this.getIdf(t, 1);
+        const tf = doc.bpeTfMap1.get(t) || 0;
+        totalHitCount1 += tf;
+        rawBm25_1 += idf * ((tf * (k1 + 1)) / (tf + k1 * lenNorm1));
 
-        const positions = doc.bpeTokenMap.get(t);
+        const positions = doc.bpePosMap1.get(t);
         if (positions) {
-          const isContent = !FUNCTION_WORDS.has(t) && idf >= medianIdf;
+          const isContent = !FUNCTION_WORDS.has(t) && idf >= prep.medianIdf1;
           for (let p = 0; p < positions.length; p++) {
             const pos = positions[p]!;
-            windowHits.push({ pos, termId });
-
-            if (isContent && (firstSalientPos === -1 || pos < firstSalientPos)) {
-              firstSalientPos = pos;
+            windowHits.push({ pos, termId: i });
+            if (isContent && (firstSalientPos1 === -1 || pos < firstSalientPos1)) {
+              firstSalientPos1 = pos;
             }
           }
         }
-
-        const tf = doc.bpeTfMap.get(t) || 0;
-        totalHitCount += tf;
-        rawBm25Score += idf * ((tf * (k1 + 1)) / (tf + k1 * docLenNorm));
       }
     }
 
-    let ngramHitIdfSum = 0.0;
-    for (let i = 0; i < queryNgrams.length; i++) {
-      const g = queryNgrams[i]!;
-      if (doc.docNgramSet.has(g)) {
-        ngramHitIdfSum += this.getIdf(g, true);
+    const bm25_t1 = prep.maxQueryBm25_1 > 0 ? Math.min(1.0, rawBm25_1 / prep.maxQueryBm25_1) : 0.0;
+    const coverage_t1 = prep.uniqueBpe1.length > 0 ? matchedTokens1.size / prep.uniqueBpe1.length : 0.0;
+    const salienceGate_t1 = doc.docBpeSet1.has(prep.maxIdfToken1) ? 1.0 : 0.0;
+
+    // =========================================================================
+    // 2. TOKENIZER 2: Symbol & Alphanumeric BM25, Coverage, Salience, Exact Citation
+    // =========================================================================
+    let bm25_t2 = 0.0;
+    let coverage_t2 = 0.0;
+    let salienceGate_t2 = 0.0;
+
+    if (prep.uniqueBpe2.length > 0) {
+      const lenNorm2 = 1.0 - b + b * (doc.docLengthT2 / (this.avgdlT2 || 1.0));
+      let rawBm25_2 = 0.0;
+      let matchedCount2 = 0;
+
+      for (let i = 0; i < prep.uniqueBpe2.length; i++) {
+        const t = prep.uniqueBpe2[i]!;
+        if (doc.docBpeSet2.has(t)) {
+          matchedCount2++;
+          const idf = this.getIdf(t, 2);
+          const tf = doc.bpeTfMap2.get(t) || 0;
+          rawBm25_2 += idf * ((tf * (k1 + 1)) / (tf + k1 * lenNorm2));
+        }
       }
+
+      bm25_t2 = prep.maxQueryBm25_2 > 0 ? Math.min(1.0, rawBm25_2 / prep.maxQueryBm25_2) : 0.0;
+      coverage_t2 = matchedCount2 / prep.uniqueBpe2.length;
+      salienceGate_t2 = doc.docBpeSet2.has(prep.maxIdfToken2) ? 1.0 : 0.0;
+    }
+
+    const exactCitation_t2 =
+      prep.hasFullCitation2 && doc.docSymbolShingles2.has(prep.fullCitationQuery2) ? 1.0 : 0.0;
+
+    // =========================================================================
+    // 3. TOKENIZER 3: Language N-Gram BM25, Coverage
+    // =========================================================================
+    let bm25_t3 = 0.0;
+    let coverage_t3 = 0.0;
+
+    if (prep.uniqueNgrams3.length > 0) {
+      const lenNorm3 = 1.0 - b + b * (doc.docLengthT3 / (this.avgdlT3 || 1.0));
+      let rawBm25_3 = 0.0;
+      let matchedCount3 = 0;
+
+      for (let i = 0; i < prep.uniqueNgrams3.length; i++) {
+        const g = prep.uniqueNgrams3[i]!;
+        if (doc.docNgramSet3.has(g)) {
+          matchedCount3++;
+          const idf = this.getIdf(g, 3);
+          const tf = doc.ngramTfMap3.get(g) || 0;
+          rawBm25_3 += idf * ((tf * (k1 + 1)) / (tf + k1 * lenNorm3));
+        }
+      }
+
+      bm25_t3 = prep.maxQueryBm25_3 > 0 ? Math.min(1.0, rawBm25_3 / prep.maxQueryBm25_3) : 0.0;
+      coverage_t3 = matchedCount3 / prep.uniqueNgrams3.length;
     }
 
     // =========================================================================
-    // FEATURE #3 & #4: MINIMUM COVERING WINDOW (BUG-FREE TWO-POINTER SCAN)
+    // 4. CLAUSE INTEGRITY (Computed internally from minimal covering span)
     // =========================================================================
-    let minCoveringSpan = Infinity;
-    let bestL = 0;
-    let bestR = 0;
-    const K = matchedBpeTokens.size;
+    let clauseIntegrity = 0.0;
+    const K = matchedTokens1.size;
 
     if (K >= 2 && windowHits.length >= K) {
       windowHits.sort((a, b) => a.pos - b.pos);
@@ -422,6 +591,9 @@ export class SearchEngine {
 
       let distinctCount = 0;
       let left = 0;
+      let minSpan = Infinity;
+      let bestL = 0;
+      let bestR = 0;
 
       for (let right = 0; right < windowHits.length; right++) {
         const tRight = windowHits[right]!.termId;
@@ -431,8 +603,8 @@ export class SearchEngine {
 
         while (distinctCount === K) {
           const span = windowHits[right]!.pos - windowHits[left]!.pos + 1;
-          if (span < minCoveringSpan) {
-            minCoveringSpan = span;
+          if (span < minSpan) {
+            minSpan = span;
             bestL = windowHits[left]!.pos;
             bestR = windowHits[right]!.pos;
           }
@@ -444,59 +616,32 @@ export class SearchEngine {
           left++;
         }
       }
-    }
 
-    let sentenceTerminals = 0;
-    if (minCoveringSpan !== Infinity && bestR > bestL) {
-      for (let p = bestL; p < bestR; p++) {
-        if (doc.punctuationIndices.has(p)) sentenceTerminals++;
-      }
-    }
-
-    // Feature #6: Order Monotonicity
-    let isOrdered = false;
-    if (matchedBpeTokens.size >= 2) {
-      let lastPos = -1;
-      let ordered = true;
-      for (let i = 0; i < uniqueBpeTokens.length; i++) {
-        const t = uniqueBpeTokens[i]!;
-        const positions = doc.bpeTokenMap.get(t);
-        if (positions && positions.length > 0) {
-          let found = false;
-          for (let k = 0; k < positions.length; k++) {
-            const p = positions[k]!;
-            if (p > lastPos) {
-              lastPos = p;
-              found = true;
-              break;
-            }
-          }
-          if (!found) { ordered = false; break; }
+      if (minSpan !== Infinity && bestR > bestL) {
+        let sentenceTerminals = 0;
+        for (let p = bestL; p < bestR; p++) {
+          if (doc.punctuationIndices.has(p)) sentenceTerminals++;
         }
+        clauseIntegrity = 1.0 / (1.0 + sentenceTerminals);
       }
-      isOrdered = ordered;
     }
 
-    // Citation and Symbol Coverage
-    let symbolMatchedCount = 0;
-    for (let i = 0; i < querySymbols.length; i++) {
-      if (doc.docSymbolSet.has(querySymbols[i]!)) symbolMatchedCount++;
-    }
-
-    const hasSalientSymbol = querySymbols.length > 0 && doc.docSymbolSet.has(querySymbols[0]!);
-    const hasExactCitation = hasFullCitation && doc.docSymbolSet.has(fullCitationQuery);
-
-    // Feature #11: Salient Collocation Matching
-    let phraseMatchScore = 0.0;
-    if (queryClean.length > 0 && doc.cleanText.includes(queryClean)) {
-      phraseMatchScore = 1.0;
-    } else if (salientPhrases.length > 0) {
+    // =========================================================================
+    // 5. EXACT MATCHES, POSITIONS, DENSITY & PRIORS
+    // =========================================================================
+    let exactPhrase_t1 = 0.0;
+    if (prep.cleanQuery.length > 0 && doc.cleanText.includes(prep.cleanQuery)) {
+      exactPhrase_t1 = 1.0;
+    } else if (prep.salientPhrases.length > 0) {
       let matchedCount = 0;
-      for (let i = 0; i < salientPhrases.length; i++) {
-        if (doc.cleanText.includes(salientPhrases[i]!)) matchedCount++;
+      for (let i = 0; i < prep.salientPhrases.length; i++) {
+        if (doc.cleanText.includes(prep.salientPhrases[i]!)) matchedCount++;
       }
-      phraseMatchScore = Math.min(1.0, matchedCount / Math.min(3, salientPhrases.length));
+      exactPhrase_t1 = Math.min(1.0, matchedCount / Math.min(3, prep.salientPhrases.length));
     }
+
+    const earlyPositionBias_t1 = firstSalientPos1 >= 0 ? 1.0 / (1.0 + 0.05 * firstSalientPos1) : 0.0;
+    const informationDensity = doc.docLengthT1 > 0 ? Math.min(1.0, totalHitCount1 / doc.docLengthT1) : 0.0;
 
     // Dense Latent Similarity
     let denseCosineSimilarity = 0.0;
@@ -512,30 +657,28 @@ export class SearchEngine {
       denseCosineSimilarity = dot;
     }
 
-    // Direct output writes to Float32Array (Eliminated 24-property object allocation)
-    featureBuffer[0] = bpeQueryIdfSum > 0 ? Math.min(1.0, bpeHitIdfSum / bpeQueryIdfSum) : 0.0;
-    featureBuffer[1] = ngramQueryIdfSum > 0 ? Math.min(1.0, ngramHitIdfSum / ngramQueryIdfSum) : 0.0;
-    featureBuffer[2] = uniqueBpeCount > 0 ? Math.min(1.0, matchedBpeTokens.size / uniqueBpeCount) : 0.0;
-    featureBuffer[3] = (minCoveringSpan !== Infinity && minCoveringSpan >= K && K >= 2)
-      ? Math.min(1.0, K / minCoveringSpan)
-      : 0.0;
-    featureBuffer[4] = (minCoveringSpan !== Infinity && K >= 2) ? 1.0 / (1.0 + sentenceTerminals) : 0.0;
-    featureBuffer[5] = firstSalientPos >= 0 ? 1.0 / (1.0 + 0.05 * firstSalientPos) : 0.0;
-    featureBuffer[6] = isOrdered ? 1.0 : 0.0;
-    featureBuffer[7] = Math.max(0.0, Math.min(1.0, denseCosineSimilarity));
-    featureBuffer[8] = maxQueryBm25 > 0 ? Math.min(1.0, rawBm25Score / maxQueryBm25) : 0.0;
-    featureBuffer[9] = doc.docBpeSet.has(maxIdfToken) ? 1.0 : 0.0;
-    featureBuffer[10] = doc.words.length > 0 ? Math.min(1.0, totalHitCount / doc.words.length) : 0.0;
-    featureBuffer[11] = phraseMatchScore;
-    featureBuffer[12] = queryVibiness;
-    featureBuffer[13] = queryNumericRatio;
-    featureBuffer[14] = doc.docProseQuality;
-    featureBuffer[15] = querySymbols.length > 0 ? Math.min(1.0, symbolMatchedCount / querySymbols.length) : 0.0;
-    featureBuffer[16] = hasSalientSymbol ? 1.0 : 0.0;
-    featureBuffer[17] = hasExactCitation ? 1.0 : 0.0;
+    // =========================================================================
+    // WRITE THE DEFINITIVE 17-FEATURE VECTOR (ZERO HEAP ALLOCATION)
+    // =========================================================================
+    featureBuffer[0]  = bm25_t1;
+    featureBuffer[1]  = bm25_t2;
+    featureBuffer[2]  = bm25_t3;
+    featureBuffer[3]  = coverage_t1;
+    featureBuffer[4]  = coverage_t2;
+    featureBuffer[5]  = coverage_t3;
+    featureBuffer[6]  = salienceGate_t1;
+    featureBuffer[7]  = salienceGate_t2;
+    featureBuffer[8]  = exactPhrase_t1;
+    featureBuffer[9]  = exactCitation_t2;
+    featureBuffer[10] = clauseIntegrity;
+    featureBuffer[11] = earlyPositionBias_t1;
+    featureBuffer[12] = informationDensity;
+    featureBuffer[13] = Math.max(0.0, Math.min(1.0, denseCosineSimilarity));
+    featureBuffer[14] = prep.queryVibiness;
+    featureBuffer[15] = prep.queryNumericRatio;
+    featureBuffer[16] = doc.docProseQuality;
   }
 
-  // Safe wrapper for training scripts
   computeFeatures(
     queryText: string,
     docIdx: number,
@@ -544,12 +687,12 @@ export class SearchEngine {
   ): Float32Array {
     const prep = this.prepareQuery(queryText);
     const doc = this.documents[docIdx];
-    if (!doc) return new Float32Array(18);
+    if (!doc) return new Float32Array(NUM_FEATURES);
 
-    const scratch = createSearchScratchpad(prep.uniqueBpeCount);
+    const scratch = createSearchScratchpad(prep.uniqueBpe1.length);
     this.computeFeaturesInto(prep, doc, docIdx, queryEmbedding, precomputedDenseSim, scratch);
 
-    const copy = new Float32Array(18);
+    const copy = new Float32Array(NUM_FEATURES);
     copy.set(scratch.featureBuffer);
     return copy;
   }
@@ -577,42 +720,24 @@ export class SearchEngine {
     }
   }
 
-    async search(
+  async search(
     queryText: string,
     topK: number = 5,
     queryEmbedding: Float32Array | null = null
   ): Promise<SearchResult[]> {
     if (!queryText || this.docCount === 0) return [];
 
-    // 1. Fetch dense query embedding if available and not supplied
     if (!queryEmbedding && this.denseEmbeddings) {
       queryEmbedding = await this.fetchQueryEmbedding(queryText);
     }
 
-    // 2. Prepare query metrics (IDFs, tokens, vibiness, symbols)
     const prep = this.prepareQuery(queryText);
-
-    // 3. Allocate scratchpad ONCE per query (Zero-GC, thread-reentrant)
-    const scratch = createSearchScratchpad(prep.uniqueBpeCount);
-
-    // Pre-allocate candidates array for the entire population
+    const scratch = createSearchScratchpad(prep.uniqueBpe1.length);
     const candidates: ScoredCandidate[] = new Array(this.docCount);
 
-    // =========================================================================
-    // EXHAUSTIVE FULL-POPULATION SCORING (Zero-GC Hot Loop)
-    // =========================================================================
     for (let docIdx = 0; docIdx < this.docCount; docIdx++) {
       const doc = this.documents[docIdx]!;
-
-      // In-place feature extraction directly into scratchpad Float32Array
-      this.computeFeaturesInto(
-        prep,
-        doc,
-        docIdx,
-        queryEmbedding,
-        null,
-        scratch
-      );
+      this.computeFeaturesInto(prep, doc, docIdx, queryEmbedding, null, scratch);
 
       const f = scratch.featureBuffer;
       const score = scorePassage(f);
@@ -620,32 +745,23 @@ export class SearchEngine {
       candidates[docIdx] = {
         docIdx,
         score,
-        denseSim: f[7]!
+        denseSim: f[13]!
       };
     }
 
-    // Sort the entire population by SwiGLU score descending
     candidates.sort((a, b) => b.score - a.score);
     const finalCount = Math.min(topK, candidates.length);
 
-    // Reconstruct features only for the top-K winners
     const results: SearchResult[] = new Array(finalCount);
     for (let i = 0; i < finalCount; i++) {
       const c = candidates[i]!;
       const doc = this.documents[c.docIdx]!;
 
-      this.computeFeaturesInto(
-        prep,
-        doc,
-        c.docIdx,
-        queryEmbedding,
-        null,
-        scratch
-      );
+      this.computeFeaturesInto(prep, doc, c.docIdx, queryEmbedding, null, scratch);
 
       results[i] = {
         id: doc.id,
-        text: doc.text,
+        text: doc.rawText,
         score: c.score,
         probability: c.score,
         denseSim: c.denseSim,
@@ -655,5 +771,4 @@ export class SearchEngine {
 
     return results;
   }
-
 }

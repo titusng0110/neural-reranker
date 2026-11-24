@@ -1,0 +1,549 @@
+=============================================================
+🧼 BUILDING PRISTINE 1,250 ELEMENTARY VOCABULARY (.BIN)
+=============================================================
+1. Loading frequency word lists...
+   - Loaded 9,447 words from Google 10,000
+   - Loaded 8,386 words from Mixed 10,000
+
+2. Extracting clean headwords from Oxford dictionary...
+   - Extracted 25,901 Oxford headwords
+
+3. Intersecting Oxford headwords with top-10k lists...
+   - Verified 5,845 mutually confirmed human words.
+
+4. Ranking candidates via ./o200k_base.tiktoken...
+
+=============================================================
+🎉 SUCCESS! Saved 1250 words to binary "./simple_vocab.bin" (8.26 KB)
+=============================================================
+Processing ./o200k_base.tiktoken (English < 11000, Symbols < 50000)...
+
+--- Optimization Summary ---
+Tokens kept:         68,174
+Compact Binary Size: 781.8 KB
+Saved to:            ./bpe_vocab.bin
+
+=============================================================
+🧠 EMBEDDING TRAINING PAIRS TO BINARY (.BIN)
+=============================================================
+Source Dataset: "./training_data.jsonl"
+Target Binary:  "./training_embeddings.bin"
+
+Loaded 498 training pairs.
+
+Embedding 498 queries (batch size 16)...
+Query Progress: [16/498] Query Progress: [32/498] Query Progress: [48/498] Query Progress: [64/498] Query Progress: [80/498] Query Progress: [96/498] Query Progress: [112/498] Query Progress: [128/498] Query Progress: [144/498] Query Progress: [160/498] Query Progress: [176/498] Query Progress: [192/498] Query Progress: [208/498] Query Progress: [224/498] Query Progress: [240/498] Query Progress: [256/498] Query Progress: [272/498] Query Progress: [288/498] Query Progress: [304/498] Query Progress: [320/498] Query Progress: [336/498] Query Progress: [352/498] Query Progress: [368/498] Query Progress: [384/498] Query Progress: [400/498] Query Progress: [416/498] Query Progress: [432/498] Query Progress: [448/498] Query Progress: [464/498] Query Progress: [480/498] Query Progress: [496/498] Query Progress: [498/498] 
+
+Embedding 498 passages (safe batch size 4)...
+Passage Progress: [4/498] Passage Progress: [8/498] Passage Progress: [12/498] Passage Progress: [16/498] Passage Progress: [20/498] Passage Progress: [24/498] Passage Progress: [28/498] Passage Progress: [32/498] Passage Progress: [36/498] Passage Progress: [40/498] Passage Progress: [44/498] Passage Progress: [48/498] Passage Progress: [52/498] Passage Progress: [56/498] Passage Progress: [60/498] Passage Progress: [64/498] Passage Progress: [68/498] Passage Progress: [72/498] Passage Progress: [76/498] Passage Progress: [80/498] Passage Progress: [84/498] Passage Progress: [88/498] Passage Progress: [92/498] Passage Progress: [96/498] Passage Progress: [100/498] Passage Progress: [104/498] Passage Progress: [108/498] Passage Progress: [112/498] Passage Progress: [116/498] Passage Progress: [120/498] Passage Progress: [124/498] Passage Progress: [128/498] Passage Progress: [132/498] Passage Progress: [136/498] Passage Progress: [140/498] Passage Progress: [144/498] Passage Progress: [148/498] Passage Progress: [152/498] Passage Progress: [156/498] Passage Progress: [160/498] Passage Progress: [164/498] Passage Progress: [168/498] Passage Progress: [172/498] Passage Progress: [176/498] Passage Progress: [180/498] Passage Progress: [184/498] Passage Progress: [188/498] Passage Progress: [192/498] Passage Progress: [196/498] Passage Progress: [200/498] Passage Progress: [204/498] Passage Progress: [208/498] Passage Progress: [212/498] Passage Progress: [216/498] Passage Progress: [220/498] Passage Progress: [224/498] Passage Progress: [228/498] Passage Progress: [232/498] Passage Progress: [236/498] Passage Progress: [240/498] Passage Progress: [244/498] Passage Progress: [248/498] Passage Progress: [252/498] Passage Progress: [256/498] Passage Progress: [260/498] Passage Progress: [264/498] Passage Progress: [268/498] Passage Progress: [272/498] Passage Progress: [276/498] Passage Progress: [280/498] Passage Progress: [284/498] Passage Progress: [288/498] Passage Progress: [292/498] Passage Progress: [296/498] Passage Progress: [300/498] Passage Progress: [304/498] Passage Progress: [308/498] Passage Progress: [312/498] Passage Progress: [316/498] Passage Progress: [320/498] Passage Progress: [324/498] Passage Progress: [328/498] Passage Progress: [332/498] Passage Progress: [336/498] Passage Progress: [340/498] Passage Progress: [344/498] Passage Progress: [348/498] Passage Progress: [352/498] Passage Progress: [356/498] Passage Progress: [360/498] Passage Progress: [364/498] Passage Progress: [368/498] Passage Progress: [372/498] Passage Progress: [376/498] Passage Progress: [380/498] Passage Progress: [384/498] Passage Progress: [388/498] Passage Progress: [392/498] Passage Progress: [396/498] Passage Progress: [400/498] Passage Progress: [404/498] Passage Progress: [408/498] Passage Progress: [412/498] Passage Progress: [416/498] Passage Progress: [420/498] Passage Progress: [424/498] Passage Progress: [428/498] Passage Progress: [432/498] Passage Progress: [436/498] Passage Progress: [440/498] Passage Progress: [444/498] Passage Progress: [448/498] Passage Progress: [452/498] Passage Progress: [456/498] Passage Progress: [460/498] Passage Progress: [464/498] Passage Progress: [468/498] Passage Progress: [472/498] Passage Progress: [476/498] Passage Progress: [480/498] Passage Progress: [484/498] Passage Progress: [488/498] Passage Progress: [492/498] Passage Progress: [496/498] Passage Progress: [498/498] 
+
+💾 Saved 498 queries & 498 passages to "./training_embeddings.bin" (2988.0 KB)!
+Ready for instant zero-copy training.
+
+
+=============================================================
+🚀 INDUSTRIAL HYBRID SwiGLU RANKER TRAINING (17 Features, Tri-BM25)
+=============================================================
+Loaded 498 training queries from "./training_data.jsonl".
+Indexed 166 unique passages into SearchEngine.
+Loading binary dense vectors from "./training_embeddings.bin" (zero-copy)...
+Extracting 17-feature vectors for all (498 queries × 166 docs)...
+Constructed 29,760 label-smoothed pairwise comparisons.
+
+=============================================================
+🔍 STAGE 1: BASIN-HOPPING SEARCH FOR BEST INITIAL BASIN (100 hops)
+   (Feature Dropout: DISABLED for deterministic basin finding)
+=============================================================
+Seed Basin Loss: 0.3032
+  Hop [  1/100] - Current: 0.2890 | Best Basin Loss: 🌟 0.2890 | Accepted: 100%
+  Hop [ 10/100] - Current: 0.2683 | Best Basin Loss: 🌟 0.2665 | Accepted: 100%
+  Hop [ 20/100] - Current: 0.2650 | Best Basin Loss: 🌟 0.2644 | Accepted: 100%
+  Hop [ 30/100] - Current: 0.2645 | Best Basin Loss: 🌟 0.2638 | Accepted: 100%
+  Hop [ 40/100] - Current: 0.2644 | Best Basin Loss: 🌟 0.2636 | Accepted: 100%
+  Hop [ 50/100] - Current: 0.2630 | Best Basin Loss: 🌟 0.2627 | Accepted: 98%
+  Hop [ 60/100] - Current: 0.2626 | Best Basin Loss: 🌟 0.2623 | Accepted: 98%
+  Hop [ 70/100] - Current: 0.2626 | Best Basin Loss: 🌟 0.2620 | Accepted: 99%
+  Hop [ 80/100] - Current: 0.2620 | Best Basin Loss: 🌟 0.2618 | Accepted: 99%
+  Hop [ 90/100] - Current: 0.2618 | Best Basin Loss: 🌟 0.2618 | Accepted: 99%
+  Hop [100/100] - Current: 0.2617 | Best Basin Loss: 🌟 0.2615 | Accepted: 99%
+
+✅ Optimal starting basin located in 7.9s! (Loss: 🌟 0.2615)
+
+=============================================================
+🏋️  STAGE 2: MASTER 1000-EPOCH ADAMW TRAINING (WARMUP + COSINE)
+   (Feature Dropout: ENABLED at 5% across features 0..13)
+=============================================================
+  Epoch    1/1000 [LR: 0.00132] - Loss: 0.2748 (Warmup: 3%)
+  Epoch   30/1000 [LR: 0.02500] - Loss: 0.2660 (✨ Warmup Complete)
+  Epoch   40/1000 [LR: 0.02499] - Loss: 0.2649 
+  Epoch   80/1000 [LR: 0.02484] - Loss: 0.2634 
+  Epoch  120/1000 [LR: 0.02448] - Loss: 0.2631 
+  Epoch  160/1000 [LR: 0.02393] - Loss: 0.2628 
+  Epoch  200/1000 [LR: 0.02319] - Loss: 0.2625 
+  Epoch  240/1000 [LR: 0.02227] - Loss: 0.2629 
+  Epoch  280/1000 [LR: 0.02120] - Loss: 0.2624 
+  Epoch  320/1000 [LR: 0.01998] - Loss: 0.2623 
+  Epoch  360/1000 [LR: 0.01864] - Loss: 0.2621 
+  Epoch  400/1000 [LR: 0.01721] - Loss: 0.2619 
+  Epoch  440/1000 [LR: 0.01570] - Loss: 0.2619 
+  Epoch  480/1000 [LR: 0.01414] - Loss: 0.2617 
+  Epoch  520/1000 [LR: 0.01255] - Loss: 0.2617 
+  Epoch  560/1000 [LR: 0.01097] - Loss: 0.2619 
+  Epoch  600/1000 [LR: 0.00942] - Loss: 0.2617 
+  Epoch  640/1000 [LR: 0.00793] - Loss: 0.2618 
+  Epoch  680/1000 [LR: 0.00651] - Loss: 0.2617 
+  Epoch  720/1000 [LR: 0.00520] - Loss: 0.2615 
+  Epoch  760/1000 [LR: 0.00402] - Loss: 0.2616 
+  Epoch  800/1000 [LR: 0.00298] - Loss: 0.2615 
+  Epoch  840/1000 [LR: 0.00211] - Loss: 0.2616 
+  Epoch  880/1000 [LR: 0.00141] - Loss: 0.2617 
+  Epoch  920/1000 [LR: 0.00091] - Loss: 0.2617 
+  Epoch  960/1000 [LR: 0.00060] - Loss: 0.2615 
+  Epoch 1000/1000 [LR: 0.00050] - Loss: 0.2615 (🏆 Master Training Finished)
+
+✅ 1000 Epochs completed in 0.25 minutes.
+
+=============================================================
+🎛️  STAGE 3: POST-TRAINING TEMPERATURE CALIBRATION
+=============================================================
+  Temperature (T): 0.7316 | Calibration Bias: -1.1606
+  Brier Score:     0.1195 -> 0.0494
+
+=============================================================
+📊 STAGE 4: VALIDATION RANKING EVALUATION
+=============================================================
+Strict Exact-Chunk Rank #1: 422/498 (84.7%)
+Relevant Section Recall #1: 441/498 (88.6%) (Exact Hit OR ±1 Sister Chunk)
+
+=============================================================
+💾 Saved model weights to weights.bin (976 bytes)
+🎉 Training pipeline finished successfully!
+=============================================================
+
+
+=============================================================
+🧠 UNIVERSAL CORPUS EMBEDDER (JINA V5 ON PORT 9000)
+=============================================================
+Input Corpus: "listingrules.txt"
+Output File:  "listingrules_embeddings.bin"
+Extracted 1,057 chunks (~2000 chars each).
+
+Encoding chunks [1-16/1057]... Encoding chunks [17-32/1057]... Encoding chunks [33-48/1057]... Encoding chunks [49-64/1057]... Encoding chunks [65-80/1057]... Encoding chunks [81-96/1057]... Encoding chunks [97-112/1057]... Encoding chunks [113-128/1057]... Encoding chunks [129-144/1057]... Encoding chunks [145-160/1057]... Encoding chunks [161-176/1057]... Encoding chunks [177-192/1057]... Encoding chunks [193-208/1057]... Encoding chunks [209-224/1057]... Encoding chunks [225-240/1057]... Encoding chunks [241-256/1057]... Encoding chunks [257-272/1057]... Encoding chunks [273-288/1057]... Encoding chunks [289-304/1057]... Encoding chunks [305-320/1057]... Encoding chunks [321-336/1057]... Encoding chunks [337-352/1057]... Encoding chunks [353-368/1057]... Encoding chunks [369-384/1057]... Encoding chunks [385-400/1057]... Encoding chunks [401-416/1057]... Encoding chunks [417-432/1057]... Encoding chunks [433-448/1057]... Encoding chunks [449-464/1057]... Encoding chunks [465-480/1057]... Encoding chunks [481-496/1057]... Encoding chunks [497-512/1057]... Encoding chunks [513-528/1057]... Encoding chunks [529-544/1057]... Encoding chunks [545-560/1057]... Encoding chunks [561-576/1057]... Encoding chunks [577-592/1057]... Encoding chunks [593-608/1057]... Encoding chunks [609-624/1057]... Encoding chunks [625-640/1057]... Encoding chunks [641-656/1057]... Encoding chunks [657-672/1057]... Encoding chunks [673-688/1057]... Encoding chunks [689-704/1057]... Encoding chunks [705-720/1057]... Encoding chunks [721-736/1057]... Encoding chunks [737-752/1057]... Encoding chunks [753-768/1057]... Encoding chunks [769-784/1057]... Encoding chunks [785-800/1057]... Encoding chunks [801-816/1057]... Encoding chunks [817-832/1057]... Encoding chunks [833-848/1057]... Encoding chunks [849-864/1057]... Encoding chunks [865-880/1057]... Encoding chunks [881-896/1057]... Encoding chunks [897-912/1057]... Encoding chunks [913-928/1057]... Encoding chunks [929-944/1057]... Encoding chunks [945-960/1057]... Encoding chunks [961-976/1057]... Encoding chunks [977-992/1057]... Encoding chunks [993-1008/1057]... Encoding chunks [1009-1024/1057]... Encoding chunks [1025-1040/1057]... Encoding chunks [1041-1056/1057]... Encoding chunks [1057-1057/1057]... 
+✅ Embedded all 1057 chunks in 24.5s!
+💾 Saved 1057 vectors to "listingrules_embeddings.bin" (3.10 MB).
+
+
+=============================================================
+📈 HKEX MAIN BOARD LISTING RULES: ZERO-SHOT SEARCH BENCHMARK
+=============================================================
+Reading ./listingrules.txt...
+Total text size: 2066.2 KB (2,115,746 characters)
+Chunking into ~2000 character windows...
+Generated 1,057 text chunks.
+
+Indexing chunks into SearchEngine...
+Loading dense embeddings from ./listingrules_embeddings.bin...
+Dense vectors loaded!
+Indexed all 1,057 chunks in 556.5 ms! Ready to search.
+
+=============================================================
+🔍 EXECUTING 22 BENCHMARK QUERIES (TOP 3 CHUNKS)
+=============================================================
+
+-------------------------------------------------------------
+📋 [A1. Connected Deal with Boss (Chapter 14A)]
+🔎 QUERY: "can a company boss or major shareholder secretly buy an asset from the business without telling the public"
+⏱️  Search latency: 70.68 ms
+
+   #1 [Score: 0.310 | Prob: 31.0%] listingrules-chunk-424
+      "benefit upon any connected person who is a substantial shareholder of the target company. Repurchases of securities by the listed issuer or its subsidiary 14A.94 Repurchases of own securities by a listed issuer or its subsidiary from a connected person is fully exempt if it is made: (1) on the Exchange or a recognised stock exchange, except where the connected person knowingly sells the securities..."
+
+   #2 [Score: 0.284 | Prob: 28.4%] listingrules-chunk-224
+      "10.07(1) (a) if, immediately following such disposal or upon the exercise or enforcement of such options, rights, interests or encumbrances, that person or group of persons would cease to be a controlling shareholder. 10 – 12 Any offer for sale contained in a listing document shall not be subject to such restrictions. (2) For the purpose of this rule, a person is treated as the beneficial owner of..."
+
+   #3 [Score: 0.272 | Prob: 27.2%] listingrules-chunk-426
+      "and (3) the transaction is of a revenue nature in the ordinary and usual course of business of the listed issuer’s group, and conducted on normal commercial terms or better. 14A.100 A “passive investor” is a substantial shareholder of the listed issuer and/or any of its subsidiaries that: (1) is a sovereign fund, or a unit trust or mutual fund authorised by the Securities and Futures Commission or..."
+
+-------------------------------------------------------------
+📋 [A2. Pre-Revenue Biotech Listing (Chapter 18A)]
+🔎 QUERY: "can a biotech medical company that has never made any profit or revenue list its shares on the stock exchange"
+⏱️  Search latency: 51.32 ms
+
+   #1 [Score: 0.659 | Prob: 65.9%] listingrules-chunk-495
+      "and marketed. Note: Details to be disclosed should be in line with those disclosed in the listing document of the Biotech Company under rules 18A.04 and 18A.05. Sufficient Operations 18A.09 Where the Exchange considers that a Biotech Company listed under this chapter fails to comply with rule 13.24, the Exchange may suspend dealings or cancel the listing of its securities under rule 6.01. The Exch..."
+
+   #2 [Score: 0.583 | Prob: 58.3%] listingrules-chunk-490
+      "or referred to in this Chapter. This Chapter sets out rules and modifications to existing rules applicable to Biotech Companies that seek to list under this Chapter. Issuers are encouraged to contact the Exchange if they envisage any difficulties in complying fully with the relevant requirements. DEFINITIONS AND INTERPRETATION 18A.01 For the purposes of this Chapter unless otherwise stated or the ..."
+
+   #3 [Score: 0.380 | Prob: 38.0%] listingrules-chunk-491
+      "8.05A, 8.05B and 8.05C). 18A.03 An applicant that has applied for listing under this Chapter must:— (1) demonstrate that it is both eligible and suitable for listing as a Biotech Company; (2) have an initial market capit alisation at the time of listing of at least HK$1,500,000,000; (3) have been in operation in its current line of business for at least two financial years prior to listing under s..."
+
+-------------------------------------------------------------
+📋 [A3. Dead Shell Company Delisting (Rule 13.24)]
+🔎 QUERY: "what happens to a listed company if its business completely dries up and it becomes an empty shell with no real operations"
+⏱️  Search latency: 48.49 ms
+
+   #1 [Score: 0.302 | Prob: 30.2%] listingrules-chunk-717
+      "Exchange Listing Rules EXCLUSION OF PROPERTY VALUATION REPORTS ON PROPERTY UNDER OPERATING LEASE FROM LISTING DOCUMENTS AND CIRCULARS [Repealed 1 January 2012] PN17 – 1 The Stock Exchange of Hong Kong Limited Practice Note 17 to the Rules Governing the Listing of Securities (the “Exchange Listing Rules”) Issued pursuant to rule 1.06 of the Exchange Listing Rules SUFFICIENCY OF OPERATIONS AND DELIS..."
+
+   #2 [Score: 0.280 | Prob: 28.0%] listingrules-chunk-525
+      "listing document or any subsequent update as published by the Pre-Commercial Company; (3) updates on any revenue, profit and other business and financial estimates as provided in the listing document and any subsequent update to those estimates as published by the Pre-Commercial Company; (4) a summary of expenditure on its research and development activities; and (5) a prominently disclosed warnin..."
+
+   #3 [Score: 0.247 | Prob: 24.7%] listingrules-chunk-718
+      "adequate action to obtain restoration of listing may lead to the Exchange cancelling the listing.” Purpose of this Practice Note is to clarify the procedures it will adopt in allowing such issuers to present resumption proposals or, where no such proposals are received, the procedures that will be taken to cancel the listing of an issuer’s securities. 3. Delisting Procedures 3.1 The Exchange will ..."
+
+-------------------------------------------------------------
+📋 [A4. Director Insider Trading Blackout (Model Code / App C3)]
+🔎 QUERY: "how many days before annual financial results are released is a director completely forbidden from buying or selling company shares"
+⏱️  Search latency: 49.41 ms
+
+   #1 [Score: 0.933 | Prob: 93.3%] listingrules-chunk-816
+      "time of exercise, the dealing is to be regarded as taking place at the time of exercise. RULES A. Absolute prohibitions 1. A director must not deal in any of the securities of the issuer at any time when he possesses inside information in relation to those securities, or where clearance to deal is not otherwise conferred upon him under rule B.8 of this code. 2. A director must not deal in the secu..."
+
+   #2 [Score: 0.587 | Prob: 58.7%] listingrules-chunk-283
+      "An issuer shall publish an announcement in accordance with rule 2.07C at least seven clear business days in advance of the date fixed for any board meeting at which the declaration, recommendation or payment of a dividend is expected to be decided or at which any announcement of the profits or losses for any year, half-year or other period is to be approved for publication. 13 – 36 Voting of direc..."
+
+   #3 [Score: 0.567 | Prob: 56.7%] listingrules-chunk-223
+      "shares in the 12 months immediately preceding the announcement, the use of such proceeds, the intended use of any amount not yet utilised and how the issuer has dealt with such amount; and (3) include in its annual report and accounts a monthly breakdown of on-market sales of treasury shares during the financial year under review showing the number of treasury shares sold each month and the sellin..."
+
+-------------------------------------------------------------
+📋 [A5. Public Float Requirement (Rule 8.08)]
+🔎 QUERY: "how much percentage of a company shares must be owned by ordinary public retail investors instead of the founders"
+⏱️  Search latency: 51.22 ms
+
+   #1 [Score: 0.473 | Prob: 47.3%] listingrules-chunk-605
+      "either on its own or in conjunction with any core connected person take legal, or effective, management control of underlying investments and that in any event the investment company will not own or control more than 30% (or such other percentage as may from time to time be specified in the Takeovers Code as being the level for triggering a mandatory general offer) of the voting rights in any one ..."
+
+   #2 [Score: 0.337 | Prob: 33.7%] listingrules-chunk-558
+      "19A.28B(2)(b)), a statement setting out the market value and percentage of its public float, as at the end of the month to which the monthly return relates. (2) A PRC issuer must include, in its annual report: (a) a statement confirming compliance with rule 19A.28B, or an appropriate negative statement; (b) for a PRC issuer with no other listed shares relying on the Initial Prescribed Threshold fo..."
+
+   #3 [Score: 0.298 | Prob: 29.8%] listingrules-chunk-521
+      "A Pre-Commercial Company must include research and development costs, irrespective of whether they are capitalised, in the calculation of working capital requirements for the purpose of this rule. INITIAL PUBLIC OFFERING OF A SPECIALIST TECHNOLOGY COMPANY Allocation of Shares 18C.08 At least 50% of the total number of shares offered in the initial public offering (excluding any shares to be issued..."
+
+-------------------------------------------------------------
+📋 [A6. Independent Board Members & Accounting Qualification (Rule 3.10)]
+🔎 QUERY: "how many independent outside directors does a listed board need to have and does one of them have to be an accountant"
+⏱️  Search latency: 58.22 ms
+
+   #1 [Score: 0.819 | Prob: 81.9%] listingrules-chunk-76
+      "3.12A, 3.13 and 3.13A, every independent non-executive director must have the character, integrity, independence and experience to fulfil his role effectively. The Exchange may stipulate a minimum number of independent non-executive directors which is higher than three if, in the opinion of the Exchange, the size of the board or other circumstances of the listed issuer justify it. 3.12A An indepen..."
+
+   #2 [Score: 0.805 | Prob: 80.5%] listingrules-chunk-75
+      "non-executive directors must have appropriate professional qualifications or accounting or related financial management expertise. Note: With regard to “appropriate accounting or related financial management expertise”, the Exchange would expect the person to have, through experience as a public accountant or auditor or as a chief financial officer, controller or principal accounting officer of a ..."
+
+   #3 [Score: 0.693 | Prob: 69.3%] listingrules-chunk-604
+      "be independent of the management company or the investment adviser, if any. Qualifications for Listing 21.04 The qualifications for listing contained in Chapter 8 shall apply, save for rules 8.05, 8.06, 8.07, 8.08(1) 8.09, 8.10 and 8.21 and save as otherwise agreed with the Exchange. However, the Exchange may be prepared to waive the guideline regarding the minimum number of shareholders which is ..."
+
+-------------------------------------------------------------
+📋 [B1. Reverse Takeover / Backdoor Listing (Rule 14.06B)]
+🔎 QUERY: "acquisition of assets by listed issuer constituting very substantial acquisition involving change in control or within 36 months of change in control"
+⏱️  Search latency: 67.97 ms
+
+   #1 [Score: 0.982 | Prob: 98.2%] listingrules-chunk-338
+      "may include changes in control/de facto control, acquisitions and/or disposals. The Exchange may regard acquisitions and other transactions or arrangements as a series if they take place in a reasonable proximity to each other (which normally refers to a period of 36 months or less) or are otherwise related. The Exchange will consider whether, taking the factors together, an issuer’s acquisition o..."
+
+   #2 [Score: 0.749 | Prob: 74.9%] listingrules-chunk-339
+      "as shown in the listed issuer’s accounts and the market value of the listed issuer at the time of the acquisition(s), which must be adjusted in the manner set out in rules 14.16, 14.17, 14.18 and 14.19, as applicable, is to be used as the denominator of the percentage ratios. Rule 14.06B will apply irrespective of whether any general offer obligations under the Takeovers Code have been waived. 14 ..."
+
+   #3 [Score: 0.558 | Prob: 55.8%] listingrules-chunk-348
+      "any adjustments or modifications arising by virtue of the provisions of rules 14.16, 14.18 and 14.19. 14.23 Factors which the Exchange will take into account in determining whether transactions will be aggregated include whether the transactions:— (1) are entered into by the listed issuer with the same party or with parties connected or otherwise associated with one another; (2) involve the acquis..."
+
+-------------------------------------------------------------
+📋 [B2. The Five Percentage Size Tests (Rule 14.07)]
+🔎 QUERY: "calculation of the five percentage ratios assets ratio profits ratio revenue ratio consideration ratio and equity capital ratio for classification of notifiable transactions"
+⏱️  Search latency: 64.63 ms
+
+   #1 [Score: 0.825 | Prob: 82.5%] listingrules-chunk-342
+      "days immediately preceding the date of the transaction (see in particular rule 14.15); and (5) Equity capital ratio — the number of shares to be issued and/or treasury shares to be transferred by the listed issuer as consideration divided by the total number of the listed issuer’s issued shares (excluding treasury shares) immediately before the transaction. Notes: 1. The numerator includes shares ..."
+
+   #2 [Score: 0.754 | Prob: 75.4%] listingrules-chunk-384
+      "will be taken into consideration for the purpose of classification of notifiable transactions. Where the premium represents 10% or more of the sum of the premium and the exercise price, the value of the underlying assets, the profits and revenue attributable to such assets, and the sum of the premium and the exercise price will be used for the purpose of the percentage ratios; and (2) on the exerc..."
+
+   #3 [Score: 0.741 | Prob: 74.1%] listingrules-chunk-349
+      "defined in the Takeovers Code) of the listed issuer (other than at the level of its subsidiaries). The listed issuer must provide details of the transactions to the Exchange to enable it to determine whether the transactions will be aggregated. Note: This rule serves to set out certain specific circumstances where the listed issuer must seek guidance from the Exchange before it enters into any pro..."
+
+-------------------------------------------------------------
+📋 [B3. Continuing Connected Transactions & Annual Caps (Rule 14A.51 / 14A.53)]
+🔎 QUERY: "written agreement for continuing connected transactions setting annual monetary caps and requirement for independent non-executive directors annual review"
+⏱️  Search latency: 55.18 ms
+
+   #1 [Score: 0.971 | Prob: 97.1%] listingrules-chunk-408
+      "exceed three years except in special circumstances where the nature of the transaction requires a longer period. In this case, the listed issuer must appoint an independent financial adviser to explain why the agreement requires a longer period and to confirm that it is normal business practice for agreements of this type to be of such duration. Annual cap 14A.53 The listed issuer must set an annu..."
+
+   #2 [Score: 0.696 | Prob: 69.6%] listingrules-chunk-409
+      "attention that causes them to believe that the continuing connected transactions: (1) have not been approved by the listed issuer’s board of directors; (2) were not, in all material respects, in accordance with the pricing policies of the listed issuer’s group if the transactions involve the provision of goods or services by the listed issuer’s group; (3) were not entered into, in all material res..."
+
+   #3 [Score: 0.583 | Prob: 58.3%] listingrules-chunk-415
+      "if there is a profit forecast 32 — no material adverse change 39 — directors’ service contracts 40 — directors’ interests in assets 43(2)(c) — documents on display; (14) information regarding directors’ and chief executive’s interests in the listed issuer described in paragraphs 34 and 38 of Appendix D1B, and Practice Note 5; (15) information regarding the competing interests of each of the direct..."
+
+-------------------------------------------------------------
+📋 [B4. General Mandate Placing Limit & Discount Restriction (Rule 13.36)]
+🔎 QUERY: "general mandate to allot and issue shares not exceeding twenty percent of total issued shares and placing price discount restriction of twenty percent to benchmarked price"
+⏱️  Search latency: 73.32 ms
+
+   #1 [Score: 0.503 | Prob: 50.3%] listingrules-chunk-152
+      "immediately preceding the announcement of the proposed rights issue or open offer, the use of such proceeds, the intended use of any amount not yet utilised and how the issuer has dealt with such amount; and (b) the information required under rule 2.17 in the circular to shareholders; and (4) the issuer must comply with the requirements under rules 13.39(6) and (7), 13.40, 13.41 and 13.42. Restric..."
+
+   #2 [Score: 0.501 | Prob: 50.1%] listingrules-chunk-276
+      "or (ii) where there were no such controlling shareholders, directors (excluding independent non-executive directors) and the chief executive of the issuer at the time the decision to seek a refreshment of the mandate was made or approved by the board, and their respective associates; 13 – 30 (c) the issuer must comply with the requirements set out in rules 13.39(6) and (7), 13.40, 13.41 and 13.42;..."
+
+   #3 [Score: 0.475 | Prob: 47.5%] listingrules-chunk-277
+      "trading days immediately prior to the earlier of: (i) the date of announcement of the placing or the proposed transaction or arrangement involving the proposed issue of securities under the general mandate; (ii) the date of the placing agreement or other agreement involving the proposed issue of securities under the general mandate; and (iii) the date on which the placing or subscription or sellin..."
+
+-------------------------------------------------------------
+📋 [B5. Basic Listing Profit Requirement (Rule 8.05(1))]
+🔎 QUERY: "financial eligibility criteria under profit test requiring aggregate profit attributable to shareholders of not less than eighty million Hong Kong dollars over three consecutive financial years"
+⏱️  Search latency: 78.41 ms
+
+   #1 [Score: 0.704 | Prob: 70.4%] listingrules-chunk-156
+      "records) on an issuer’s business in the relevant place of incorporation and place of central management and control for its investigation and enforcement purposes. 8.03 An issuer which is a Hong Kong company must not be a private company within the meaning of section 11 of the Companies Ordinance. 8.04 Both the issuer and its business must, in the opinion of the Exchange, be suitable for listing. ..."
+
+   #2 [Score: 0.451 | Prob: 45.1%] listingrules-chunk-157
+      "recent audited financial year; (d) a market capitalisation of at least HK$2,000,000,000 at the time of listing; (e) revenue of at least HK$500,000,000 for the most recent audited financial year; and (f) positive cash flow from operating activities carried out by the new applicant, or its group, that are to be listed of at least HK$100,000,000 in aggregate for the three preceding financial years. T..."
+
+   #3 [Score: 0.403 | Prob: 40.3%] listingrules-chunk-713
+      "Parent must satisfy the following criteria: (a) the profit/loss in the three consecutive financial years immediately preceding the spin-off application must in aggregate amount to a net profit of not less than HK$80 million; failing which (b) the profit/loss in any three of the four consecutive financial years immediately preceding the spin-off application must in aggregate amount to a net profit ..."
+
+-------------------------------------------------------------
+📋 [B6. Weighted Voting Rights Beneficiary Restrictions (Chapter 8A)]
+🔎 QUERY: "weighted voting rights structure where beneficiaries must be executive directors with voting power restricted to maximum ten to one ratio and non-transferable"
+⏱️  Search latency: 65.01 ms
+
+   #1 [Score: 0.839 | Prob: 83.9%] listingrules-chunk-176
+      "rights must otherwise be the same as the rights attached to the issuer’s listed ordinary shares. A class of shares with weighted voting rights is ineligible for listing 8A.08 An issuer must not seek a listing of a class of shares carrying weighted voting rights. Voting power of non-WVR shareholders 8A.09 Non-WVR shareholders must be entitled to cast at least 10% of the votes that are eligible to b..."
+
+   #2 [Score: 0.802 | Prob: 80.2%] listingrules-chunk-179
+      "longer a member of the issuer’s board of directors; (3) deemed by the Exchange to be incapacitated for the purpose of performing his or her duties as a director; or 8A – 7 (4) deemed by the Exchange to no longer meet the requirements of a director set out in these rules. Note 1: The Exchange would deem a beneficiary of weighted voting rights to no longer meet the requirements of a director if, for..."
+
+   #3 [Score: 0.775 | Prob: 77.5%] listingrules-chunk-181
+      "of the beneficiaries of the weighted voting rights at the time of the issuer’s initial listing have beneficial ownership of shares carrying weighted voting rights. CORPORATE GOVERNANCE Right of Non-WVR Shareholders to Convene an Extraordinary General Meeting 8A.23 Non-WVR shareholders must be able to convene an extraordinary general meeting and add resolutions to the meeting agenda. The minimum st..."
+
+-------------------------------------------------------------
+📋 [C1. Connected Transaction Announcement & Approval under Rule 14A.35 / 14A.36]
+🔎 QUERY: "Rule 14A.35 announcement and Rule 14A.36 independent shareholders approval requirements for connected transactions"
+⏱️  Search latency: 53.82 ms
+
+   #1 [Score: 0.632 | Prob: 63.2%] listingrules-chunk-281
+      "transaction or arrangement, no independent board committee can be formed. In that event, the independent financial adviser shall make its recommendation to the shareholders only in the manner prescribed under rule 13.39(7)(b). (7) In relation to any transactions that are subject to independent shareholders’ approval pursuant to the Exchange Listing Rules or spin-off proposals that are subject to a..."
+
+   #2 [Score: 0.605 | Prob: 60.5%] listingrules-chunk-405
+      "comply with all other applicable provisions under the Rules. Shareholders’ approval 14A.36 The connected transaction must be conditional on shareholders’ approval at a general meeting held by the listed issuer. Any shareholder who has a material interest in the transaction must abstain from voting on the resolution. 14A.37 The Exchange may waive the general meeting requirement and accept a written..."
+
+   #3 [Score: 0.525 | Prob: 52.5%] listingrules-chunk-412
+      "of announcements for notifiable transactions); (1A) the identities and a description of the principal business activities of the parties to the transaction and of their ultimate beneficial owner(s); (2) the connected relationship between the parties to the transaction, and the connected person’s interests in the transaction; (3) the independent non-executive directors’ views on the matters set out..."
+
+-------------------------------------------------------------
+📋 [C2. Share Buy-back Restrictions under Rule 10.06(1) & (2)]
+🔎 QUERY: "Rule 10.06 share repurchases on exchange and blackout period prohibiting buy-backs within 30 days immediately preceding results announcement"
+⏱️  Search latency: 45.13 ms
+
+   #1 [Score: 0.746 | Prob: 74.6%] listingrules-chunk-217
+      "purchase its shares on the Exchange if the purchase price is higher by 5% or more than the average closing market price for the 5 preceding trading days on which its shares were traded on the Exchange; (b) an issuer shall not purchase its shares on the Exchange for a consideration other than cash or for settlement otherwise than in accordance with the trading rules of the Exchange from time to tim..."
+
+   #2 [Score: 0.664 | Prob: 66.4%] listingrules-chunk-816
+      "time of exercise, the dealing is to be regarded as taking place at the time of exercise. RULES A. Absolute prohibitions 1. A director must not deal in any of the securities of the issuer at any time when he possesses inside information in relation to those securities, or where clearance to deal is not otherwise conferred upon him under rule B.8 of this code. 2. A director must not deal in the secu..."
+
+   #3 [Score: 0.658 | Prob: 65.8%] listingrules-chunk-221
+      "are, in the opinion of the Exchange, more analogous to debt securities than equity securities. References to purchases of shares include purchases by agents or nominees on behalf of the issuer or subsidiary of the issuer, as the case may be. Treasury Shares 10.06A An issuer may sell treasury shares on the Exchange under a general mandate approved by shareholders in accordance with rule 13.36(2)(b)..."
+
+-------------------------------------------------------------
+📋 [C3. Pre-Revenue Biotech Criteria under Chapter 18A Rule 18A.03]
+🔎 QUERY: "Chapter 18A Rule 18A.03 biotech company eligibility Phase I clinical trials on Core Product and minimum market capitalization of HK$1.5 billion"
+⏱️  Search latency: 72.16 ms
+
+   #1 [Score: 0.849 | Prob: 84.9%] listingrules-chunk-491
+      "8.05A, 8.05B and 8.05C). 18A.03 An applicant that has applied for listing under this Chapter must:— (1) demonstrate that it is both eligible and suitable for listing as a Biotech Company; (2) have an initial market capit alisation at the time of listing of at least HK$1,500,000,000; (3) have been in operation in its current line of business for at least two financial years prior to listing under s..."
+
+   #2 [Score: 0.474 | Prob: 47.4%] listingrules-chunk-518
+      "requirements of Chapter 8 (other than rules 8.05, 8.05A and 8.05B). 18C.03 An applicant applying for listing under this Chapter must: (1) demonstrate that it meets the definition of a Specialist Technology Company, and is both eligible and suitable for listing as either a Commercial Company or a Pre- Commercial Company; Note: The Exchange will publish guidance on the Exchange’s website, as amended..."
+
+   #3 [Score: 0.414 | Prob: 41.4%] listingrules-chunk-490
+      "or referred to in this Chapter. This Chapter sets out rules and modifications to existing rules applicable to Biotech Companies that seek to list under this Chapter. Issuers are encouraged to contact the Exchange if they envisage any difficulties in complying fully with the relevant requirements. DEFINITIONS AND INTERPRETATION 18A.01 For the purposes of this Chapter unless otherwise stated or the ..."
+
+-------------------------------------------------------------
+📋 [C4. Minimum 25% Public Float under Rule 8.08(1)(a)]
+🔎 QUERY: "Rule 8.08(1)(a) minimum public float requirement at least 25% of the issuers total number of issued shares held by the public"
+⏱️  Search latency: 64.63 ms
+
+   #1 [Score: 0.931 | Prob: 93.1%] listingrules-chunk-266
+      "by dividing the total turnover (as stated in the Exchange’s daily quotation sheets) by the total number of shares traded (as stated in the Exchange’s daily quotation sheets) for the 125 trading days immediately prior to the date of determination, as adjusted for any applicable corporate actions. Minimum prescribed public float 13.32B There must be an open market in the shares listed on the Exchang..."
+
+   #2 [Score: 0.919 | Prob: 91.9%] listingrules-chunk-561
+      "with no other listed shares that fails to comply with rule 19A.28B(1) will be regarded as having a “Significant Public Float Shortfall” unless a portion of H shares listed on the Exchange and held by the public: (a) represents at least 15% of the PRC issuer’s total number of issued shares in the class to which H shares belong (excluding treasury shares) or, if the Initial Prescribed Threshold appl..."
+
+   #3 [Score: 0.910 | Prob: 91.0%] listingrules-chunk-556
+      "with no other listed shares, this will normally mean that a portion of H shares listed on the Exchange and held by the public must, at all times: (a) represent at least 25% of the PRC issuer’s total number of issued shares in the class to which H shares belong (excluding treasury shares), or any lower minimum percentage of public float prescribed at the time of listing under rule 19A.13A(1) (the “..."
+
+-------------------------------------------------------------
+📋 [C5. Sufficient Operations Requirement under Rule 13.24]
+🔎 QUERY: "Rule 13.24 issuer shall carry out a business with a sufficient level of operations and assets of sufficient value to support operations to warrant continued listing"
+⏱️  Search latency: 80.34 ms
+
+   #1 [Score: 0.841 | Prob: 84.1%] listingrules-chunk-253
+      "period end or year end, shall be included in the interim or annual report. 13.21 Where an obligation arises under rules 13.17, 13.18 or 13.19, the disclosures required by these rules should be included in subsequent interim and annual reports for so long as circumstances giving rise to the obligation continue to exist. 13.22 Where the circumstances giving rise to a disclosure under rule 13.16 cont..."
+
+   #2 [Score: 0.820 | Prob: 82.0%] listingrules-chunk-717
+      "Exchange Listing Rules EXCLUSION OF PROPERTY VALUATION REPORTS ON PROPERTY UNDER OPERATING LEASE FROM LISTING DOCUMENTS AND CIRCULARS [Repealed 1 January 2012] PN17 – 1 The Stock Exchange of Hong Kong Limited Practice Note 17 to the Rules Governing the Listing of Securities (the “Exchange Listing Rules”) Issued pursuant to rule 1.06 of the Exchange Listing Rules SUFFICIENCY OF OPERATIONS AND DELIS..."
+
+   #3 [Score: 0.751 | Prob: 75.1%] listingrules-chunk-516
+      "rule 18B.74, a SPAC must publish an announcement regarding the return of funds and the upcoming cancellation of listing in accordance with rule 13.25(1). 18B – 22 EXCEPTIONS 18B.76 The following rules do not apply to a SPAC from the time of its listing until the completion of a De-SPAC Transaction: (1) rules 6.01(3) and 13.24 on the carrying out, directly or indirectly, of a business with a suffic..."
+
+-------------------------------------------------------------
+📋 [C6. Minimum INED Composition under Rule 3.10 and Rule 3.10A]
+🔎 QUERY: "Rule 3.10 and Rule 3.10A board composition requiring at least three independent non-executive directors representing at least one-third of the board"
+⏱️  Search latency: 78.93 ms
+
+   #1 [Score: 0.849 | Prob: 84.9%] listingrules-chunk-75
+      "non-executive directors must have appropriate professional qualifications or accounting or related financial management expertise. Note: With regard to “appropriate accounting or related financial management expertise”, the Exchange would expect the person to have, through experience as a public accountant or auditor or as a chief financial officer, controller or principal accounting officer of a ..."
+
+   #2 [Score: 0.764 | Prob: 76.4%] listingrules-chunk-76
+      "3.12A, 3.13 and 3.13A, every independent non-executive director must have the character, integrity, independence and experience to fulfil his role effectively. The Exchange may stipulate a minimum number of independent non-executive directors which is higher than three if, in the opinion of the Exchange, the size of the board or other circumstances of the listed issuer justify it. 3.12A An indepen..."
+
+   #3 [Score: 0.741 | Prob: 74.1%] listingrules-chunk-770
+      "directors should be subject to re-election at regular intervals. An issuer must explain the reasons for the resignation or removal of any director. Code Provisions B.2.1 Directors should ensure that they can give sufficient time and attention to the issuer’s affairs and should not accept the appointment if they cannot do so. B.2.2 Every director, including those appointed for a specific term, shou..."
+
+-------------------------------------------------------------
+📋 [D1. Discloseable (5%) vs Major (25%) Transaction Classification]
+🔎 QUERY: "percentage ratio threshold distinguishing discloseable transaction 5% from major transaction 25% requiring circular and shareholders approval"
+⏱️  Search latency: 59.83 ms
+
+   #1 [Score: 0.826 | Prob: 82.6%] listingrules-chunk-336
+      "or 14.06C. In this regard, the listed issuer must determine whether or not to consult its financial, legal or other professional advisers. Listed issuers or advisers which are in any doubt as to the application of the requirements in this Chapter should consult the Exchange at an early stage. 14.06 The transaction classification is made by using the percentage ratios set out in rule 14.07. The cla..."
+
+   #2 [Score: 0.779 | Prob: 77.9%] listingrules-chunk-342
+      "days immediately preceding the date of the transaction (see in particular rule 14.15); and (5) Equity capital ratio — the number of shares to be issued and/or treasury shares to be transferred by the listed issuer as consideration divided by the total number of the listed issuer’s issued shares (excluding treasury shares) immediately before the transaction. Notes: 1. The numerator includes shares ..."
+
+   #3 [Score: 0.761 | Prob: 76.1%] listingrules-chunk-416
+      "(2) financial assistance (rules 14A.87 to 14A.91); (3) issues of new securities, or sales or transfers of treasury shares by the listed issuer or its subsidiary (rules 14A.92 and 14A.92B); (4) dealings in securities on stock exchanges (rule 14A.93); (5) repurchases of securities by the listed issuer or its subsidiary (rule 14A.94); (6) directors’ service contracts and insurance (rules 14A.95 and 1..."
+
+-------------------------------------------------------------
+📋 [D2. De Minimis Connected Transaction Exemption (5% vs 0.1%)]
+🔎 QUERY: "de minimis exemption under Rule 14A.76 fully exempt if all percentage ratios are less than 0.1% or less than 1% or less than 5% with total consideration under HK$3 million"
+⏱️  Search latency: 59.81 ms
+
+   #1 [Score: 0.969 | Prob: 96.9%] listingrules-chunk-416
+      "(2) financial assistance (rules 14A.87 to 14A.91); (3) issues of new securities, or sales or transfers of treasury shares by the listed issuer or its subsidiary (rules 14A.92 and 14A.92B); (4) dealings in securities on stock exchanges (rule 14A.93); (5) repurchases of securities by the listed issuer or its subsidiary (rule 14A.94); (6) directors’ service contracts and insurance (rules 14A.95 and 1..."
+
+   #2 [Score: 0.746 | Prob: 74.6%] listingrules-chunk-417
+      "the total consideration (or in the case of any financial assistance, the total value of the financial assistance plus any monetary advantage to the connected person or commonly held entity) is less than HK$10,000,000. Percentage ratio calculations 14A.77 The methods of percentage ratio calculations set out in Chapter 14 (notifiable transactions) also apply to connected transactions in this Chapter..."
+
+   #3 [Score: 0.676 | Prob: 67.6%] listingrules-chunk-421
+      "in rule 14A.82; or 14A – 37 (2) the transaction and any other transactions entered into by the listed issuer’s group involve the acquisition of assets from a person or group of persons or any of their associates within 24 months after the person(s) gain control (as defined in the Takeovers Code) of the listed issuer. 14A.85 The listed issuer must provide information to the Exchange on whether it s..."
+
+-------------------------------------------------------------
+📋 [D3. Scheme Mandate Limit (Chapter 17 vs Chapter 13)]
+🔎 QUERY: "Chapter 17 share option and award schemes scheme mandate limit not exceeding 10% of total issued shares of the issuer"
+⏱️  Search latency: 63.27 ms
+
+   #1 [Score: 0.913 | Prob: 91.3%] listingrules-chunk-472
+      "amount, if any, payable on application or acceptance of the option or award and the period within which payments or calls must or may be made or loans for such purposes must be repaid; (8) the basis of determining the exercise price of options granted or the purchase price of shares awarded, if any; and (9) the remaining life of the scheme. Other requirements 17.10 In respect of share schemes of a..."
+
+   #2 [Score: 0.902 | Prob: 90.2%] listingrules-chunk-462
+      "from the date of shareholders’ approval for the last refreshment (or the adoption of the scheme). (b) Any “refreshment” within any three year period must be approved by shareholders of the issuer subject to the following provisions: (i) any controlling shareholders and their associates (or if there is no controlling shareholder, directors (excluding independent non-executive directors) and the chi..."
+
+   #3 [Score: 0.896 | Prob: 89.6%] listingrules-chunk-461
+      "of service providers and the criteria for determining a person’s eligibility under each category. Scheme mandate limit and service provider sublimit 17.03B (1) The scheme mandate limit must not exceed 10% of the relevant class of shares of the listed issuer in issue (excluding treasury shares) as at the date of approval of the scheme (alternatively, in respect of a scheme of a new applicant that w..."
+
+-------------------------------------------------------------
+📋 [D4. Specialist Technology Companies Chapter 18C Market Cap Thresholds]
+🔎 QUERY: "Chapter 18C Specialist Technology Companies minimum market capitalization of HK$6 billion for Commercial Companies and HK$10 billion for Pre-Commercial Companies"
+⏱️  Search latency: 60.61 ms
+
+   #1 [Score: 0.858 | Prob: 85.8%] listingrules-chunk-518
+      "requirements of Chapter 8 (other than rules 8.05, 8.05A and 8.05B). 18C.03 An applicant applying for listing under this Chapter must: (1) demonstrate that it meets the definition of a Specialist Technology Company, and is both eligible and suitable for listing as either a Commercial Company or a Pre- Commercial Company; Note: The Exchange will publish guidance on the Exchange’s website, as amended..."
+
+   #2 [Score: 0.508 | Prob: 50.8%] listingrules-chunk-519
+      "back of accounting provisions and other similar activities resulting from mere book entries, will be disregarded. 18C.04 An applicant applying for listing under this Chapter must: (1) have engaged in the research and development of its Specialist Technology Product(s) for at least three financial years prior to listing; (2) have incurred expenditure on the research and development of its Specialis..."
+
+   #3 [Score: 0.390 | Prob: 39.0%] listingrules-chunk-521
+      "A Pre-Commercial Company must include research and development costs, irrespective of whether they are capitalised, in the calculation of working capital requirements for the purpose of this rule. INITIAL PUBLIC OFFERING OF A SPECIALIST TECHNOLOGY COMPANY Allocation of Shares 18C.08 At least 50% of the total number of shares offered in the initial public offering (excluding any shares to be issued..."
+
+=============================================================
+🏁 Search completed across HKEX Main Board Listing Rules.
+=============================================================
+
+
+=============================================================
+🔬 NEURAL NETWORK AUTOPSY: Hybrid SwiGLU Architecture (1028 bytes)
+=============================================================
+
+📊 1. CALIBRATION & BASELINE OPERATING POINT:
+-------------------------------------------------------------
+  Raw Output Bias (b_out):        -1.2000
+  Calibration Temperature (T):   0.7316
+  Calibration Bias:              -1.1606
+  Default Zero-Feature Prob:     3.82% (confidence when no features match)
+
+⚡ 2. GLOBAL FEATURE IMPORTANCE (Total Effective Gradient):
+   (Combined Skip Highway + Direct SwiGLU non-linear influence on final logit)
+--------------------------------------------------------------------------------------
+ Rank | Feature Name                   | Skip   | Total Impact | Visual Strength
+--------------------------------------------------------------------------------------
+ #1   | Dense Cosine Similarity        | +1.914 |       +3.225 |             │████████████
+ #2   | Tokenizer 2 Query Coverage     | +1.050 |       +1.315 |             │█████       
+ #3   | Query Vibiness Prior           | +0.442 |       +1.311 |             │█████       
+ #4   | Query Numeric Ratio            | +0.713 |       -1.096 |         ████│            
+ #5   | Lexical Information Density    | -0.967 |       -0.955 |         ████│            
+ #6   | Symbol & Alphanumeric BM25 (T2) | +0.367 |       +0.672 |             │██          
+ #7   | Tokenizer 1 Query Coverage     | +0.828 |       +0.592 |             │██          
+ #8   | Document Prose Quality Prior   | -0.225 |       +0.552 |             │██          
+ #9   | Full BPE BM25 (T1)             | +0.615 |       +0.552 |             │██          
+ #10  | Clause Integrity               | +0.525 |       +0.531 |             │██          
+ #11  | Language N-Gram BM25 (T3)      | +0.757 |       +0.331 |             │█           
+ #12  | Tokenizer 1 Exact Phrase Match | +0.422 |       +0.305 |             │█           
+ #13  | Tokenizer 3 Query Coverage     | -0.160 |       -0.291 |            █│            
+ #14  | Tokenizer 2 Salience Gate      | +0.107 |       +0.213 |             │█           
+ #15  | Early Position Bias (T1)       | +0.135 |       -0.104 |             │            
+ #16  | Tokenizer 1 Salience Gate      | -0.084 |       +0.099 |             │            
+ #17  | Tokenizer 2 Exact Citation Match | +0.140 |       +0.023 |             │            
+
+🧠 3. THE 6 SWIGLU HIDDEN NEURONS (INTERNAL SPECIALIZATION):
+--------------------------------------------------------------------------------------
+
+Neuron #1 [Output Weight W_out = +0.7311] -> 🟢 Excitatory (Boosts Score)
+   Gate Triggered By:  Query Numeric Ratio (-3.13), Tokenizer 1 Query Coverage (2.63)
+   Value Scaled By:    Tokenizer 1 Query Coverage (2.48), Full BPE BM25 (T1) (-1.26)
+
+Neuron #2 [Output Weight W_out = +0.9465] -> 🟢 Excitatory (Boosts Score)
+   Gate Triggered By:  Query Numeric Ratio (-14.63), Dense Cosine Similarity (2.92)
+   Value Scaled By:    Query Numeric Ratio (-6.01), Dense Cosine Similarity (2.95)
+
+Neuron #3 [Output Weight W_out = -0.7419] -> 🔴 Inhibitory (Suppresses Noise)
+   Gate Triggered By:  Query Numeric Ratio (-5.41), Dense Cosine Similarity (-1.86)
+   Value Scaled By:    Dense Cosine Similarity (3.88), Lexical Information Density (-2.69)
+
+Neuron #4 [Output Weight W_out = +0.3716] -> 🟢 Excitatory (Boosts Score)
+   Gate Triggered By:  Dense Cosine Similarity (3.39), Query Vibiness Prior (2.35)
+   Value Scaled By:    Dense Cosine Similarity (3.21), Document Prose Quality Prior (-1.57)
+
+Neuron #5 [Output Weight W_out = -1.1475] -> 🔴 Inhibitory (Suppresses Noise)
+   Gate Triggered By:  Query Numeric Ratio (-2.87), Query Vibiness Prior (1.27)
+   Value Scaled By:    Dense Cosine Similarity (-2.48), Query Numeric Ratio (-2.11)
+
+Neuron #6 [Output Weight W_out = -0.4111] -> 🔴 Inhibitory (Suppresses Noise)
+   Gate Triggered By:  Lexical Information Density (-2.78), Document Prose Quality Prior (1.41)
+   Value Scaled By:    Tokenizer 2 Query Coverage (2.52), Query Vibiness Prior (-2.05)
+
+
+🔗 4. TOP NON-LINEAR FEATURE SYNERGIES (Cross-Coupling):
+   (Pairs of features that mutually amplify or suppress each other in SwiGLU)
+--------------------------------------------------------------------------------------
+  #1 [-49.399] Dense Cosine Similarity  ×  Query Numeric Ratio
+     ↳ ⚖️  Compensatory (-Tradeoff)
+  #2 [-31.842] Lexical Information Density  ×  Query Numeric Ratio
+     ↳ ⚖️  Compensatory (-Tradeoff)
+  #3 [+24.635] Query Vibiness Prior  ×  Query Numeric Ratio
+     ↳ ✨ Synergistic (+Boost)
+  #4 [+20.272] Symbol & Alphanumeric BM25 (T2)  ×  Query Numeric Ratio
+     ↳ ✨ Synergistic (+Boost)
+  #5 [+16.772] Clause Integrity  ×  Query Numeric Ratio
+     ↳ ✨ Synergistic (+Boost)
+  #6 [-13.715] Full BPE BM25 (T1)  ×  Query Numeric Ratio
+     ↳ ⚖️  Compensatory (-Tradeoff)
+  #7 [+10.434] Tokenizer 1 Exact Phrase Match  ×  Query Numeric Ratio
+     ↳ ✨ Synergistic (+Boost)
+  #8 [+9.746] Tokenizer 2 Salience Gate  ×  Query Numeric Ratio
+     ↳ ✨ Synergistic (+Boost)
+
+=============================================================
+

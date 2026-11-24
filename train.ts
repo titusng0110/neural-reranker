@@ -16,8 +16,9 @@ const DATASET_PATH =
 const DENSE_BIN_PATH = './training_embeddings.bin';
 const DENSE_JSON_PATH = './training_embeddings.json';
 
-// Feature Dropout: 0% or low probability of masking Dense Cosine during training
-const DENSE_DROPOUT_PROB = 0.0;
+// Feature Dropout: 5% chance to mask each retrieval feature (0..13) during training
+const FEATURE_DROPOUT_PROB = 0.05;
+const NUM_RETRIEVAL_FEATURES = 14; // Features 0 through 13
 
 // Label Smoothing (Szegedy et al., 2016)
 const LABEL_SMOOTH_ALPHA = 0.02; // Soft targets: [0.02, 0.98]
@@ -35,7 +36,6 @@ const ADAM_BETA2 = 0.999;
 const ADAM_EPS = 1e-8;
 
 // Basin-Hopping Initializer (Wales & Doye, 1997)
-// Explores 100 candidate basins with fast 6-epoch mini-descents to find the best seed
 const BH_HOPS = 100;
 const BH_MINI_EPOCHS = 6;
 const BH_PERTURB_SIGMA = 0.07;
@@ -197,7 +197,6 @@ function copyModelState(src: ModelState, dst: ModelState): void {
   dst.b_out = src.b_out;
 }
 
-// Shazeer (2020) Variance Initialization Scaling: 1 / sqrt(d)
 function createInitialModel(rng: PRNG): ModelState {
   const W_skip = new Float32Array(NUM_FEATURES);
   const skipStd = 1.0 / Math.sqrt(NUM_FEATURES);
@@ -223,7 +222,6 @@ function createInitialModel(rng: PRNG): ModelState {
   }
 
   const b_out = -1.2;
-
   return { W_skip, W_gate, b_gate, W_val, b_val, W_out, b_out };
 }
 
@@ -281,16 +279,14 @@ function resetAdamWState(opt: AdamWOptimizerState): void {
 }
 
 // ============================================================================
-// FORWARD, BACKWARD, AND ADAMW KERNELS (ZERO-GC, NO RMSNORM)
+// FORWARD, BACKWARD, AND ADAMW KERNELS (ZERO-GC)
 // ============================================================================
 function forwardInto(x: Float32Array, model: ModelState, out: ForwardScratchpad): void {
-  // 1. Direct Skip Highway
   let z = model.b_out;
   for (let i = 0; i < NUM_FEATURES; i++) {
     z += x[i]! * model.W_skip[i]!;
   }
 
-  // 2. Direct SwiGLU Hidden Layer
   const gate = out.gate;
   const val  = out.val;
   const sigG = out.sigG;
@@ -383,7 +379,6 @@ function accumulateGradients(
   }
 }
 
-// Decoupled AdamW update (Loshchilov & Hutter, 2019)
 function stepAdamW(
   param: Float32Array,
   grad: Float32Array,
@@ -401,7 +396,6 @@ function stepAdamW(
 
   for (let i = 0; i < param.length; i++) {
     const g = grad[i]!;
-
     const mi = beta1 * m[i]! + (1.0 - beta1) * g;
     const vi = beta2 * v[i]! + (1.0 - beta2) * (g * g);
     m[i] = mi;
@@ -413,12 +407,10 @@ function stepAdamW(
     if (applyDecay) {
       param[i] = param[i]! * (1.0 - lr * WEIGHT_DECAY);
     }
-
     param[i] = param[i]! - (lr * mHat) / (Math.sqrt(vHat) + eps);
   }
 }
 
-// Cosine Annealing Learning Rate Schedule with Linear Warmup
 function getScheduledLR(
   epoch: number,
   totalEpochs: number = TOTAL_EPOCHS,
@@ -433,9 +425,6 @@ function getScheduledLR(
   return minLR + 0.5 * (baseLR - minLR) * (1.0 + Math.cos(Math.PI * progress));
 }
 
-// ============================================================================
-// TEMPERATURE & PROBABILITY CALIBRATION (Guo et al., 2017)
-// ============================================================================
 const sigmoid = (z: number): number => 1.0 / (1.0 + Math.exp(-Math.max(-20, Math.min(20, z))));
 
 interface CalibrationSample {
@@ -518,15 +507,8 @@ function fitCalibration(samples: CalibrationSample[]): CalibrationResult {
 // ============================================================================
 async function run(): Promise<void> {
   console.log(`\n=============================================================`);
-  console.log(`🚀 INDUSTRIAL HYBRID SwiGLU RANKER TRAINING (Zero-GC, Pure Signals)`);
+  console.log(`🚀 INDUSTRIAL HYBRID SwiGLU RANKER TRAINING (17 Features, Tri-BM25)`);
   console.log(`=============================================================`);
-  console.log(`Upgrades Active:`);
-  console.log(`  1. AdamW Optimizer (Decoupled weight decay: ${WEIGHT_DECAY})`);
-  console.log(`  2. SwiGLU with 1/sqrt(d) Variance Initialization Scaling`);
-  console.log(`  3. Direct Unadulterated Feature Bounding (RMSNorm REMOVED)`);
-  console.log(`  4. Label Smoothing [${LABEL_SMOOTH_ALPHA} / ${1 - LABEL_SMOOTH_ALPHA}] Cross-Entropy`);
-  console.log(`  5. Basin-Hopping Global Search (Initial ${BH_HOPS} candidate basins)`);
-  console.log(`  6. Full ${TOTAL_EPOCHS}-Epoch Master Training with Warmup & Continuous Cosine Decay\n`);
 
   const rng = createPRNG(1337);
   const dataset = await loadJsonlDataset(DATASET_PATH);
@@ -563,7 +545,7 @@ async function run(): Promise<void> {
   });
 
   // 2. Extract feature matrix
-  console.log(`Extracting 18-feature vectors for all (${N_QUERIES} queries × ${N_DOCS} docs) combinations...`);
+  console.log(`Extracting 17-feature vectors for all (${N_QUERIES} queries × ${N_DOCS} docs)...`);
   const queryFeatures: Float32Array[][] = [];
 
   for (let q = 0; q < N_QUERIES; q++) {
@@ -659,6 +641,11 @@ async function run(): Promise<void> {
   const gBVal  = new Float32Array(HIDDEN_NEURONS);
   const gOut   = new Float32Array(HIDDEN_NEURONS);
 
+  // Pre-allocated static buffers for Feature Masking (Zero allocation inside hot loop)
+  const savedA = new Float32Array(NUM_RETRIEVAL_FEATURES);
+  const savedB = new Float32Array(NUM_RETRIEVAL_FEATURES);
+  const droppedMask = new Uint8Array(NUM_RETRIEVAL_FEATURES);
+
   // Helper: Execute a single epoch step over all pairs
   function runSingleEpoch(
     m: ModelState,
@@ -679,13 +666,19 @@ async function run(): Promise<void> {
     for (let p = 0; p < numPairs; p++) {
       const pair = pairs[p]!;
 
-      const dropDense = enableDropout && rng.uniform() < DENSE_DROPOUT_PROB;
-      const origDenseA = pair.vecA[7]!;
-      const origDenseB = pair.vecB[7]!;
-
-      if (dropDense) {
-        pair.vecA[7] = 0.0;
-        pair.vecB[7] = 0.0;
+      // 1. Apply 5% Random Feature Masking to Retrieval Features (0..13)
+      if (enableDropout) {
+        for (let f = 0; f < NUM_RETRIEVAL_FEATURES; f++) {
+          if (rng.uniform() < FEATURE_DROPOUT_PROB) {
+            droppedMask[f] = 1;
+            savedA[f] = pair.vecA[f]!;
+            savedB[f] = pair.vecB[f]!;
+            pair.vecA[f] = 0.0;
+            pair.vecB[f] = 0.0;
+          } else {
+            droppedMask[f] = 0;
+          }
+        }
       }
 
       forwardInto(pair.vecA, m, scratchA);
@@ -703,9 +696,14 @@ async function run(): Promise<void> {
       accumulateGradients(pair.vecA, scratchA, m, dScore, gSkip, gGate, gBGate, gVal, gBVal, gOut);
       accumulateGradients(pair.vecB, scratchB, m, -dScore, gSkip, gGate, gBGate, gVal, gBVal, gOut);
 
-      if (dropDense) {
-        pair.vecA[7] = origDenseA;
-        pair.vecB[7] = origDenseB;
+      // 2. Restore masked features
+      if (enableDropout) {
+        for (let f = 0; f < NUM_RETRIEVAL_FEATURES; f++) {
+          if (droppedMask[f] === 1) {
+            pair.vecA[f] = savedA[f]!;
+            pair.vecB[f] = savedB[f]!;
+          }
+        }
       }
     }
 
@@ -721,10 +719,11 @@ async function run(): Promise<void> {
   }
 
   // =========================================================================
-  // STAGE 1: BASIN-HOPPING (FIND THE OPTIMAL STARTING BASIN)
+  // STAGE 1: BASIN-HOPPING (PRINT EVERY 1/10 OF TOTAL HOPS)
   // =========================================================================
   console.log(`=============================================================`);
   console.log(`🔍 STAGE 1: BASIN-HOPPING SEARCH FOR BEST INITIAL BASIN (${BH_HOPS} hops)`);
+  console.log(`   (Feature Dropout: DISABLED for deterministic basin finding)`);
   console.log(`=============================================================`);
 
   const currentModel = createInitialModel(rng);
@@ -743,6 +742,9 @@ async function run(): Promise<void> {
 
   console.log(`Seed Basin Loss: ${currentLoss.toFixed(4)}`);
   let acceptedHops = 0;
+
+  // Print every 1/10 of total hops (e.g. 100 / 10 = 10 hops)
+  const bhLogInterval = Math.max(1, Math.floor(BH_HOPS / 10));
 
   for (let hop = 1; hop <= BH_HOPS; hop++) {
     copyModelState(currentModel, trialModel);
@@ -785,7 +787,8 @@ async function run(): Promise<void> {
       }
     }
 
-    if (hop % 10 === 0 || hop === BH_HOPS) {
+    // Print every 1/10 of total hops or last hop
+    if (hop === 1 || hop % bhLogInterval === 0 || hop === BH_HOPS) {
       process.stdout.write(
         `  Hop [${String(hop).padStart(3, ' ')}/${BH_HOPS}] - ` +
         `Current: ${currentLoss.toFixed(4)} | ` +
@@ -799,15 +802,19 @@ async function run(): Promise<void> {
   console.log(`\n✅ Optimal starting basin located in ${bhSec}s! (Loss: 🌟 ${bestLoss.toFixed(4)})\n`);
 
   // =========================================================================
-  // STAGE 2: FULL 1,000-EPOCH MASTER TRAINING RUN
+  // STAGE 2: MASTER 1,000-EPOCH TRAINING (PRINT EVERY 1/25 OF TOTAL EPOCHS)
   // =========================================================================
   console.log(`=============================================================`);
   console.log(`🏋️  STAGE 2: MASTER ${TOTAL_EPOCHS}-EPOCH ADAMW TRAINING (WARMUP + COSINE)`);
+  console.log(`   (Feature Dropout: ENABLED at ${(FEATURE_DROPOUT_PROB * 100).toFixed(0)}% across features 0..${NUM_RETRIEVAL_FEATURES - 1})`);
   console.log(`=============================================================`);
 
   const masterModel = cloneModelState(bestInitialBasin);
   const masterOpt = createAdamWState();
   const trainStart = performance.now();
+
+  // Print every 1/25 of total epochs (e.g. 1000 / 25 = 40 epochs)
+  const epochLogInterval = Math.max(1, Math.floor(TOTAL_EPOCHS / 25));
 
   for (let epoch = 1; epoch <= TOTAL_EPOCHS; epoch++) {
     const currentLR = getScheduledLR(epoch, TOTAL_EPOCHS, BASE_LR, MIN_LR, WARMUP_EPOCHS);
@@ -816,7 +823,7 @@ async function run(): Promise<void> {
     const isMilestone =
       epoch === 1 ||
       epoch === WARMUP_EPOCHS ||
-      epoch % 25 === 0 ||
+      epoch % epochLogInterval === 0 ||
       epoch === TOTAL_EPOCHS;
 
     if (isMilestone) {
@@ -914,7 +921,7 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  // 8. Write binary weights (1,028 bytes)
+  // Write binary weights (976 bytes)
   writeModelWeights({
     W_skip: masterModel.W_skip,
     W_gate: masterModel.W_gate,
@@ -928,7 +935,7 @@ async function run(): Promise<void> {
   });
 
   console.log(`\n=============================================================`);
-  console.log(`💾 Saved model weights to weights.bin (1,028 bytes)`);
+  console.log(`💾 Saved model weights to weights.bin (976 bytes)`);
   console.log(`🎉 Training pipeline finished successfully!`);
   console.log(`=============================================================\n`);
 }

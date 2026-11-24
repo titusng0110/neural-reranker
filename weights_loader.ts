@@ -1,28 +1,27 @@
 import fs from 'node:fs';
 
 export const BINARY_PATH = './weights.bin';
-export const NUM_FEATURES = 18;
+export const NUM_FEATURES = 17;
 export const HIDDEN_NEURONS = 6;
 
 export const FEATURE_NAMES: readonly string[] = [
-  /*  0 */ 'BPE Lexical Ratio',
-  /*  1 */ 'N-Gram Fuzzy Ratio',
-  /*  2 */ 'Query Coverage',
-  /*  3 */ 'Proximity Span',
-  /*  4 */ 'Clause Integrity',
-  /*  5 */ 'Early Position Bias',
-  /*  6 */ 'Order Monotonicity',
-  /*  7 */ 'Dense Cosine Similarity',
-  /*  8 */ 'Full BM25 Saturation',
-  /*  9 */ 'Salience Gate (Max IDF)',
-  /* 10 */ 'Information Density',
-  /* 11 */ 'Exact Phrase Match',
-  /* 12 */ 'Query Vibiness Prior',
-  /* 13 */ 'Query Numeric Ratio',
-  /* 14 */ 'Document Prose Quality Prior',
-  /* 15 */ 'Symbol/Number Coverage',
-  /* 16 */ 'Symbol Salience Gate',
-  /* 17 */ 'Exact Citation Hierarchy Match'
+  /*  0 */ 'Full BPE BM25 (T1)',
+  /*  1 */ 'Symbol & Alphanumeric BM25 (T2)',
+  /*  2 */ 'Language N-Gram BM25 (T3)',
+  /*  3 */ 'Tokenizer 1 Query Coverage',
+  /*  4 */ 'Tokenizer 2 Query Coverage',
+  /*  5 */ 'Tokenizer 3 Query Coverage',
+  /*  6 */ 'Tokenizer 1 Salience Gate',
+  /*  7 */ 'Tokenizer 2 Salience Gate',
+  /*  8 */ 'Tokenizer 1 Exact Phrase Match',
+  /*  9 */ 'Tokenizer 2 Exact Citation Match',
+  /* 10 */ 'Clause Integrity',
+  /* 11 */ 'Early Position Bias (T1)',
+  /* 12 */ 'Lexical Information Density',
+  /* 13 */ 'Dense Cosine Similarity',
+  /* 14 */ 'Query Vibiness Prior',
+  /* 15 */ 'Query Numeric Ratio',
+  /* 16 */ 'Document Prose Quality Prior'
 ] as const;
 
 export interface WriteModelWeightsInput {
@@ -53,17 +52,17 @@ export interface ModelWeights {
 }
 
 /**
- * Total parameters in SwiGLU + Skip model (18 - 6 - 1):
- *   W_skip          : 18
- *   W_gate          : 18 * 6 = 108
+ * Total parameters in SwiGLU + Skip model (17 - 6 - 1):
+ *   W_skip          : 17
+ *   W_gate          : 17 * 6 = 102
  *   b_gate          : 6
- *   W_val           : 18 * 6 = 108
+ *   W_val           : 17 * 6 = 102
  *   b_val           : 6
  *   W_out           : 6
  *   b_out           : 1
  *   temperature     : 1
  *   calibrationBias : 1
- * Total = 255 floats = 1,020 bytes (+ 8 bytes header = 1,028 bytes)
+ * Total = 242 floats = 968 bytes (+ 8 bytes header = 976 bytes)
  */
 export function writeModelWeights(
   modelData: WriteModelWeightsInput,
@@ -92,7 +91,7 @@ export function writeModelWeights(
     HIDDEN_NEURONS * 3 +
     3;
 
-  const buf = Buffer.alloc(8 + totalFloats * 4); // 8 bytes header + floats
+  const buf = Buffer.alloc(8 + totalFloats * 4);
 
   buf.writeUInt32LE(NUM_FEATURES, 0);
   buf.writeUInt32LE(HIDDEN_NEURONS, 4);

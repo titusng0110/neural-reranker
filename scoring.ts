@@ -11,14 +11,12 @@ export const CALIBRATION_TEMPERATURE =
 export const CALIBRATION_BIAS =
   Number.isFinite(calibrationBias) ? calibrationBias : 0.0;
 
-// Pure grammatical glue
 export const PURE_STOPWORDS = new Set<string>([
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'on', 'by',
   'with', 'at', 'from', 'as', 'into', 'that', 'this', 'it', 'its', 'their',
   'than', 'then', 'so', 'such', 'be', 'been', 'being', 'have', 'has', 'had'
 ]);
 
-// Conversational / Question markers (high vibe)
 export const WH_WORDS = new Set<string>([
   'how', 'what', 'why', 'when', 'where', 'who', 'whom', 'whose',
   'can', 'could', 'should', 'would', 'will', 'is', 'are', 'was',
@@ -27,13 +25,11 @@ export const WH_WORDS = new Set<string>([
   'i', 'my', 'me', 'he', 'his','she', 'her', 'you'
 ]);
 
-// Combined non-content words (used to filter out garbage phrases)
 export const FUNCTION_WORDS = new Set<string>([
   ...PURE_STOPWORDS,
   ...WH_WORDS
 ]);
 
-// Binary deserialization of simple_vocab.bin
 function loadSimpleVocab(): Set<string> {
   const BIN_PATH = './simple_vocab.bin';
   const JSON_PATH = './simple_vocab.json';
@@ -79,13 +75,13 @@ function silu(x: number): number {
 }
 
 export function scorePassage(x: Float32Array | number[]): number {
-  // 1. Direct Skip Highway
+  // 1. Skip Highway
   let z = b_out;
   for (let i = 0; i < NUM_FEATURES; i++) {
     z += x[i]! * W_skip[i]!;
   }
 
-  // 2. Direct SwiGLU Hidden Layer (Zero RMSNorm)
+  // 2. SwiGLU Hidden Layer
   for (let j = 0; j < HIDDEN_NEURONS; j++) {
     let gate = b_gate[j]!;
     let val = b_val[j]!;
@@ -109,66 +105,45 @@ export function scoreProbability(x: Float32Array | number[]): number {
 }
 
 export interface FeatureExtractionParams {
-  bpeHitIdfSum: number;
-  bpeQueryIdfSum: number;
-  ngramHitIdfSum: number;
-  ngramQueryIdfSum: number;
-  matchedWordCount: number;
-  uniqueBpeCount: number;
-  minCoveringSpan: number;
-  sentenceTerminalsInSpan: number;
-  firstSalientPos: number;
-  isOrdered: boolean;
+  bm25_t1: number;
+  bm25_t2: number;
+  bm25_t3: number;
+  coverage_t1: number;
+  coverage_t2: number;
+  coverage_t3: number;
+  salienceGate_t1: boolean;
+  salienceGate_t2: boolean;
+  exactPhrase_t1: number;
+  exactCitation_t2: boolean;
+  clauseIntegrity: number;
+  earlyPositionBias_t1: number;
+  informationDensity: number;
   denseCosineSimilarity?: number;
-  rawBm25Score: number;
-  maxQueryBm25: number;
-  hasSalientTerm: boolean;
-  totalHitCount: number;
-  docWordCount: number;
-  phraseMatchScore: number;
   queryVibiness: number;
   queryNumericRatio: number;
   docProseQuality: number;
-  symbolMatchedCount: number;
-  totalQuerySymbols: number;
-  hasSalientSymbol: boolean;
-  hasExactCitation: boolean;
 }
 
 export function extractNormalizedFeatures(params: FeatureExtractionParams): Float32Array {
-  const {
-    bpeHitIdfSum, bpeQueryIdfSum, ngramHitIdfSum, ngramQueryIdfSum,
-    matchedWordCount, uniqueBpeCount, minCoveringSpan, sentenceTerminalsInSpan,
-    firstSalientPos, isOrdered, denseCosineSimilarity = 0.0, rawBm25Score,
-    maxQueryBm25, hasSalientTerm, totalHitCount, docWordCount, phraseMatchScore,
-    queryVibiness, queryNumericRatio, docProseQuality, symbolMatchedCount,
-    totalQuerySymbols, hasSalientSymbol, hasExactCitation
-  } = params;
-
   const x = new Float32Array(NUM_FEATURES);
 
-  x[0] = bpeQueryIdfSum > 0 ? Math.min(1.0, bpeHitIdfSum / bpeQueryIdfSum) : 0.0;
-  x[1] = ngramQueryIdfSum > 0 ? Math.min(1.0, ngramHitIdfSum / ngramQueryIdfSum) : 0.0;
-  x[2] = uniqueBpeCount > 0 ? Math.min(1.0, matchedWordCount / uniqueBpeCount) : 0.0;
-  x[3] = (minCoveringSpan !== Infinity && minCoveringSpan >= matchedWordCount && matchedWordCount >= 2)
-    ? Math.min(1.0, matchedWordCount / minCoveringSpan)
-    : 0.0;
-  x[4] = (minCoveringSpan !== Infinity && matchedWordCount >= 2)
-    ? 1.0 / (1.0 + sentenceTerminalsInSpan)
-    : 0.0;
-  x[5] = firstSalientPos >= 0 ? 1.0 / (1.0 + 0.05 * firstSalientPos) : 0.0;
-  x[6] = isOrdered ? 1.0 : 0.0;
-  x[7] = Math.max(0.0, Math.min(1.0, denseCosineSimilarity));
-  x[8] = maxQueryBm25 > 0 ? Math.min(1.0, rawBm25Score / maxQueryBm25) : 0.0;
-  x[9] = hasSalientTerm ? 1.0 : 0.0;
-  x[10] = docWordCount > 0 ? Math.min(1.0, totalHitCount / docWordCount) : 0.0;
-  x[11] = Math.max(0.0, Math.min(1.0, phraseMatchScore));
-  x[12] = queryVibiness;
-  x[13] = queryNumericRatio;
-  x[14] = docProseQuality;
-  x[15] = totalQuerySymbols > 0 ? Math.min(1.0, symbolMatchedCount / totalQuerySymbols) : 0.0;
-  x[16] = hasSalientSymbol ? 1.0 : 0.0;
-  x[17] = hasExactCitation ? 1.0 : 0.0;
+  x[0] = Math.max(0.0, Math.min(1.0, params.bm25_t1));
+  x[1] = Math.max(0.0, Math.min(1.0, params.bm25_t2));
+  x[2] = Math.max(0.0, Math.min(1.0, params.bm25_t3));
+  x[3] = Math.max(0.0, Math.min(1.0, params.coverage_t1));
+  x[4] = Math.max(0.0, Math.min(1.0, params.coverage_t2));
+  x[5] = Math.max(0.0, Math.min(1.0, params.coverage_t3));
+  x[6] = params.salienceGate_t1 ? 1.0 : 0.0;
+  x[7] = params.salienceGate_t2 ? 1.0 : 0.0;
+  x[8] = Math.max(0.0, Math.min(1.0, params.exactPhrase_t1));
+  x[9] = params.exactCitation_t2 ? 1.0 : 0.0;
+  x[10] = Math.max(0.0, Math.min(1.0, params.clauseIntegrity));
+  x[11] = Math.max(0.0, Math.min(1.0, params.earlyPositionBias_t1));
+  x[12] = Math.max(0.0, Math.min(1.0, params.informationDensity));
+  x[13] = Math.max(0.0, Math.min(1.0, params.denseCosineSimilarity ?? 0.0));
+  x[14] = Math.max(0.0, Math.min(1.0, params.queryVibiness));
+  x[15] = Math.max(0.0, Math.min(1.0, params.queryNumericRatio));
+  x[16] = Math.max(0.0, Math.min(1.0, params.docProseQuality));
 
   return x;
 }
