@@ -7,8 +7,11 @@ import {
   FUNCTION_WORDS
 } from './scoring.ts';
 import { NUM_FEATURES } from './weights_loader.ts';
-
-const LLAMA_SERVER_URL = 'http://127.0.0.1:9000/v1/embeddings';
+import {
+  EMBEDDING_DIM,
+  cosineSimilarityAt,
+  fetchEmbedding
+} from './cosine_similarity.ts';
 
 /**
  * Preprocessing rule:
@@ -147,6 +150,14 @@ export class SearchEngine {
     const buf = fs.readFileSync(binPath);
     const count = buf.readUInt32LE(0);
     const dim = buf.readUInt32LE(4);
+
+    if (dim !== EMBEDDING_DIM) {
+      throw new Error(
+        `Dense embedding dimension mismatch in "${binPath}": file contains ${dim}-dim vectors, ` +
+        `but EMBEDDING_DIM is ${EMBEDDING_DIM}. Re-run embed_corpus.ts with the current model, ` +
+        `or update EMBEDDING_DIM in cosine_similarity.ts to match this file.`
+      );
+    }
 
     this.denseEmbeddings = new Float32Array(buf.buffer, buf.byteOffset + 8, count * dim);
     this.denseDim = dim;
@@ -648,13 +659,11 @@ export class SearchEngine {
     if (precomputedDenseSim !== null) {
       denseCosineSimilarity = precomputedDenseSim;
     } else if (queryEmbedding && this.denseEmbeddings) {
-      const dim = this.denseDim;
-      const offset = docIdx * dim;
-      let dot = 0.0;
-      for (let i = 0; i < dim; i++) {
-        dot += queryEmbedding[i]! * this.denseEmbeddings[offset + i]!;
-      }
-      denseCosineSimilarity = dot;
+      denseCosineSimilarity = cosineSimilarityAt(
+        queryEmbedding,
+        this.denseEmbeddings,
+        docIdx * this.denseDim
+      );
     }
 
     // =========================================================================
@@ -698,26 +707,7 @@ export class SearchEngine {
   }
 
   async fetchQueryEmbedding(queryText: string): Promise<Float32Array | null> {
-    try {
-      const res = await fetch(LLAMA_SERVER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: [`Query: ${queryText}`] }),
-      });
-      if (!res.ok) return null;
-      const data = (await res.json()) as { data: { embedding: number[] }[] };
-      const raw = data.data[0]!.embedding;
-
-      let sum = 0.0;
-      for (let i = 0; i < raw.length; i++) sum += raw[i]! * raw[i]!;
-      const norm = Math.sqrt(sum) || 1e-12;
-      const normalized = new Float32Array(raw.length);
-      for (let i = 0; i < raw.length; i++) normalized[i] = raw[i]! / norm;
-
-      return normalized;
-    } catch {
-      return null;
-    }
+    return fetchEmbedding(queryText, 'query');
   }
 
   async search(

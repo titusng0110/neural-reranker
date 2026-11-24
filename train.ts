@@ -767,14 +767,12 @@ async function run(): Promise<void> {
     }
 
     const deltaE = trialLoss - currentLoss;
-    let accept = false;
 
-    if (deltaE < 0) {
-      accept = true;
-    } else {
-      const metroProb = Math.exp(-deltaE / BH_METROPOLIS_TEMP);
-      if (rng.uniform() < metroProb) accept = true;
-    }
+    // Always draw exactly one uniform per hop. Drawing only when deltaE >= 0
+    // makes the RNG stream depend on a floating-point comparison, so a tiny
+    // difference in the embeddings can shift every subsequent random number.
+    const metroProb = deltaE < 0 ? 1.0 : Math.exp(-deltaE / BH_METROPOLIS_TEMP);
+    const accept = rng.uniform() < metroProb;
 
     if (accept) {
       copyModelState(trialModel, currentModel);

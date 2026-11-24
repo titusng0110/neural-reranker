@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { EMBEDDING_DIM, fetchEmbeddings } from './cosine_similarity.ts';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const LLAMA_SERVER_URL = 'http://127.0.0.1:9000/v1/embeddings';
 const BATCH_SIZE = 16;
 const TARGET_CHUNK_SIZE = 2000;
 
@@ -66,24 +66,12 @@ export function chunkText(text: string, targetSize: number = TARGET_CHUNK_SIZE):
   return chunks;
 }
 
-function l2Normalize(vec: number[]): number[] {
-  let sum = 0;
-  for (let i = 0; i < vec.length; i++) sum += vec[i]! * vec[i]!;
-  const norm = Math.sqrt(sum) || 1e-12;
-  for (let i = 0; i < vec.length; i++) vec[i] = vec[i]! / norm;
-  return vec;
-}
-
-interface LlamaEmbeddingResponse {
-  data: { index: number; embedding: number[] }[];
-}
-
 // ============================================================================
 // 2. MAIN RUNNER
 // ============================================================================
 async function run(): Promise<void> {
   console.log(`\n=============================================================`);
-  console.log(`🧠 UNIVERSAL CORPUS EMBEDDER (JINA V5 ON PORT 9000)`);
+  console.log(`🧠 UNIVERSAL CORPUS EMBEDDER (${EMBEDDING_DIM}-DIM ON PORT 9000)`);
   console.log(`=============================================================`);
   console.log(`Input Corpus: "${INPUT_FILE}"`);
   console.log(`Output File:  "${OUTPUT_BIN}"`);
@@ -94,34 +82,16 @@ async function run(): Promise<void> {
   console.log(`Extracted ${totalChunks.toLocaleString()} chunks (~${TARGET_CHUNK_SIZE} chars each).\n`);
 
   const start = performance.now();
-  const allVectors: number[][] = [];
-  let dim = 768;
+  const allVectors: Float32Array[] = [];
+  const dim = EMBEDDING_DIM;
 
   for (let i = 0; i < totalChunks; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
     const progress = Math.min(totalChunks, i + BATCH_SIZE);
     process.stdout.write(`\rEncoding chunks [${i + 1}-${progress}/${totalChunks}]... `);
 
-    const formattedInput = batch.map((text) => `Document: ${text}`);
-
-    const res = await fetch(LLAMA_SERVER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: formattedInput }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`llama-server returned ${res.status}: ${await res.text()}`);
-    }
-
-    const data = (await res.json()) as LlamaEmbeddingResponse;
-    const items = data.data.sort((a, b) => a.index - b.index);
-
-    for (const item of items) {
-      const vec = l2Normalize(item.embedding);
-      dim = vec.length;
-      allVectors.push(vec);
-    }
+    const vectors = await fetchEmbeddings(batch, 'document');
+    allVectors.push(...vectors);
   }
 
   const elapsedSec = ((performance.now() - start) / 1000).toFixed(1);

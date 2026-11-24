@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import readline from 'node:readline';
+import { EMBEDDING_DIM, fetchEmbeddings } from './cosine_similarity.ts';
 
 // Automatically detect dataset file or accept CLI argument
 const DATASET_PATH =
@@ -9,23 +10,10 @@ const DATASET_PATH =
     : './training_dataset.jsonl');
 
 const OUTPUT_BIN = process.argv[3] || './training_embeddings.bin';
-const LLAMA_SERVER_URL = 'http://127.0.0.1:9000/v1/embeddings';
 
 // Safe batch sizes: queries are short (16/batch), passages are 2000 chars (4/batch)
 const QUERY_BATCH_SIZE = 16;
 const PASSAGE_BATCH_SIZE = 4;
-
-function l2Normalize(vec: number[]): number[] {
-  let sum = 0;
-  for (let i = 0; i < vec.length; i++) sum += vec[i]! * vec[i]!;
-  const norm = Math.sqrt(sum) || 1e-12;
-  for (let i = 0; i < vec.length; i++) vec[i] = vec[i]! / norm;
-  return vec;
-}
-
-interface LlamaEmbeddingResponse {
-  data: { index: number; embedding: number[] }[];
-}
 
 async function run(): Promise<void> {
   if (!fs.existsSync(DATASET_PATH)) {
@@ -70,66 +58,30 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  let dim = 768;
+  const dim = EMBEDDING_DIM;
 
   // 1. Embed Queries
   console.log(`Embedding ${totalPairs} queries (batch size ${QUERY_BATCH_SIZE})...`);
-  const queryEmbeddings: number[][] = [];
+  const queryEmbeddings: Float32Array[] = [];
 
   for (let i = 0; i < totalPairs; i += QUERY_BATCH_SIZE) {
-    const batch = queries.slice(i, i + QUERY_BATCH_SIZE).map((q) => `Query: ${q}`);
+    const batch = queries.slice(i, i + QUERY_BATCH_SIZE);
     process.stdout.write(`\rQuery Progress: [${Math.min(totalPairs, i + QUERY_BATCH_SIZE)}/${totalPairs}] `);
 
-    const res = await fetch(LLAMA_SERVER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: batch }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`llama-server (port 9000) returned HTTP ${res.status}: ${await res.text()}`);
-    }
-
-    const data = (await res.json()) as LlamaEmbeddingResponse;
-    if (!data || !Array.isArray(data.data)) {
-      throw new Error(`Invalid response from llama-server: ${JSON.stringify(data)}`);
-    }
-
-    const sorted = data.data.sort((a, b) => a.index - b.index);
-    for (const item of sorted) {
-      const vec = l2Normalize(item.embedding);
-      dim = vec.length;
-      queryEmbeddings.push(vec);
-    }
+    const vectors = await fetchEmbeddings(batch, 'query');
+    queryEmbeddings.push(...vectors);
   }
 
   // 2. Embed Passages
   console.log(`\n\nEmbedding ${totalPairs} passages (safe batch size ${PASSAGE_BATCH_SIZE})...`);
-  const passageEmbeddings: number[][] = [];
+  const passageEmbeddings: Float32Array[] = [];
 
   for (let i = 0; i < totalPairs; i += PASSAGE_BATCH_SIZE) {
-    const batch = passages.slice(i, i + PASSAGE_BATCH_SIZE).map((p) => `Document: ${p}`);
+    const batch = passages.slice(i, i + PASSAGE_BATCH_SIZE);
     process.stdout.write(`\rPassage Progress: [${Math.min(totalPairs, i + PASSAGE_BATCH_SIZE)}/${totalPairs}] `);
 
-    const res = await fetch(LLAMA_SERVER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: batch }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`llama-server (port 9000) returned HTTP ${res.status}: ${await res.text()}`);
-    }
-
-    const data = (await res.json()) as LlamaEmbeddingResponse;
-    if (!data || !Array.isArray(data.data)) {
-      throw new Error(`Invalid response from llama-server: ${JSON.stringify(data)}`);
-    }
-
-    const sorted = data.data.sort((a, b) => a.index - b.index);
-    for (const item of sorted) {
-      passageEmbeddings.push(l2Normalize(item.embedding));
-    }
+    const vectors = await fetchEmbeddings(batch, 'document');
+    passageEmbeddings.push(...vectors);
   }
 
   // 3. Binary Packing:
